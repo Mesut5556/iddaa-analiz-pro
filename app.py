@@ -422,7 +422,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.7</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -441,7 +441,7 @@ with c3: stat_box("Tüm Sezonlarda Oynanmış",len(completed))
 
 def build_coupon_candidates(upcoming, completed):
     """
-    V1.7 coupon layer.
+    V1.8 coupon layer.
     Primary validated market: 1.5 Alt/Üst.
     Production floor: >=65% model confidence.
     1-X-2 is secondary/experimental and only appears at >=75%.
@@ -529,7 +529,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("Maç Analizi • V1.7")
+    st.subheader("Maç Analizi • V1.8")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
@@ -595,7 +595,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V1.7")
+    st.subheader("🎟️ Kupon Merkezi • V1.8")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -647,11 +647,65 @@ elif menu == "🎟️ Kupon Merkezi":
 
     st.warning(
         "Model olasılık üretir; garanti vermez. Backtest isabeti kârlılık değildir. "
-        "Bahis oranları/value analizi V1.7'de henüz yoktur."
+        "V1.8 oran hesabı kullanıcı tarafından girilen değerlerle yapılır; otomatik oran ve kârlılık doğrulaması henüz yoktur."
     )
 
+    st.markdown("### 💹 V1.8 – Oran ve Value Hesaplayıcı")
+    st.caption(
+        "İlk aşamada gerçek bahis oranını SEN giriyorsun. Otomatik oran sağlayıcısı henüz bağlanmadı; "
+        "sistem oran uydurmaz. Girilen oranlar bu tarayıcı oturumunda tutulur, veritabanına kaydedilmez."
+    )
+    if coupon.empty:
+        st.info("Oran analizi için önce bu profilde uygun bir kupon seçimi bulunmalı.")
+    else:
+        st.info("Oranları kuponu oluşturduğun yerdeki güncel 1.5 Alt/Üst piyasasından kontrol ederek gir.")
+        value_rows = []
+        for pos, (_, item) in enumerate(coupon.iterrows(), start=1):
+            label = f'{pos}. {item["Maç"]} — {item["Pazar"]} (model %{item["Model %"]:.1f})'
+            odd = st.number_input(
+                label + " | Ondalık oran (0 = henüz girilmedi)",
+                min_value=0.0, max_value=100.0, value=0.0, step=0.01,
+                format="%.2f", key=f'odd_{mode}_{item["Maç"]}_{item["Pazar"]}'
+            )
+            prob = float(item["Model %"]) / 100.0
+            fair = 1.0 / prob
+            if odd >= 1.01:
+                ev = 100 * (prob * odd - 1)
+                implied = 100 / odd
+                # No "positive EV" assertion: model calibration and bookmaker margin are unknown.
+                verdict = "Model açısından pozitif" if ev > 0 else "Model açısından negatif"
+                value_rows.append({
+                    "Maç": item["Maç"], "Seçim": item["Pazar"],
+                    "Model %": round(prob * 100, 1), "Girilen oran": round(odd, 2),
+                    "Adil oran*": round(fair, 2), "Oranın ima ettiği %": round(implied, 1),
+                    "Teorik EV %*": round(ev, 1), "Değerlendirme": verdict
+                })
+            elif odd > 0:
+                st.warning("Oran 1,01 veya üzerinde olmalı; 0 bırakırsan hesaplanmaz.")
+
+        if value_rows:
+            st.dataframe(pd.DataFrame(value_rows), hide_index=True, use_container_width=True)
+            if len(value_rows) == len(coupon):
+                combined_odds = 1.0
+                for r in value_rows:
+                    combined_odds *= r["Girilen oran"]
+                combined_prob = 1.0
+                for p in coupon["Model %"]:
+                    combined_prob *= float(p) / 100.0
+                st.metric("Girilen toplam kupon oranı", f"{combined_odds:.2f}")
+                st.metric("Kaba birleşik teorik EV*", f"%{(combined_prob * combined_odds - 1) * 100:.1f}")
+            else:
+                st.caption("Toplam kupon oranı için bütün seçimlere oran gir.")
+        else:
+            st.caption("Hesaplamayı görmek için en az bir seçimin oranını gir.")
+        st.warning(
+            "*Adil oran ve EV, modelin tahmin ettiği olasılıklar doğruysa geçerlidir. "
+            "Bu modelin olasılık kalibrasyonu ve oranlı geçmiş kârlılığı henüz doğrulanmadı. "
+            "Pozitif EV gerçek kazanç garantisi değildir. Birleşik hesap seçimlerin bağımsız olduğunu varsayar."
+        )
+
 elif menu == "🧪 Backtest":
-    st.subheader("🧪 Çok Sezonlu Backtest • V1.7")
+    st.subheader("🧪 Çok Sezonlu Backtest • V1.8")
     st.caption(
         "Her geçmiş maç, yalnızca o maçtan daha önce oynanmış karşılaşmalar kullanılarak yeniden tahmin edilir. "
         "Bu test oran/kârlılık testi değil; modelin sonuç sınıflandırma isabetini ölçer. "
@@ -801,4 +855,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.7 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.8 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
