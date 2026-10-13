@@ -1,5 +1,7 @@
 import json
 import urllib.request
+import urllib.parse
+import unicodedata
 from datetime import datetime, timedelta
 from html import escape
 from zoneinfo import ZoneInfo
@@ -422,7 +424,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.2</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -508,7 +510,7 @@ def make_coupon(candidates, mode):
 
 st.markdown("""
 <style>
-/* V1.8.1 contrast patch */
+/* V1.8.2 contrast patch */
 .stApp, .stApp p, .stApp li, .stApp label { color:#F4F7FB; }
 .stApp h1, .stApp h2, .stApp h3 { color:#FFFFFF !important; }
 [data-testid="stCaptionContainer"] p { color:#C7D2E0 !important; }
@@ -523,6 +525,80 @@ div[data-baseweb="input"] input {
 div[data-baseweb="input"] input::placeholder { color:#64748B !important; }
 </style>
 """, unsafe_allow_html=True)
+
+
+# API-FOOTBALL: provider odds are only accepted for a strictly matched fixture + market.
+def api_key():
+    try:
+        return str(st.secrets.get("API_FOOTBALL_KEY", "")).strip()
+    except Exception:
+        return ""
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def api_fixtures(day, key):
+    url = "https://v3.football.api-sports.io/fixtures?" + urllib.parse.urlencode({
+        "league": 203, "season": int(day[:4]) if int(day[5:7]) >= 7 else int(day[:4])-1,
+        "date": day, "timezone": "Europe/Istanbul"})
+    req = urllib.request.Request(url, headers={"x-apisports-key": key})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.load(resp)
+    if data.get("errors"):
+        raise ValueError(str(data["errors"]))
+    return data.get("response", [])
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def api_odds(fixture_id, key):
+    url = "https://v3.football.api-sports.io/odds?fixture=" + str(fixture_id)
+    req = urllib.request.Request(url, headers={"x-apisports-key": key})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.load(resp)
+    if data.get("errors"):
+        raise ValueError(str(data["errors"]))
+    return data.get("response", [])
+
+def team_token(value):
+    value = unicodedata.normalize("NFKD", str(value).casefold().replace("ı", "i"))
+    value = "".join(c for c in value if not unicodedata.combining(c) and c.isalnum())
+    for term in ("istanbul", "fk", "sk", "footballclub"):
+        value = value.replace(term, "")
+    return value
+
+def find_exact_fixture(item, fixtures):
+    try:
+        home, away = str(item["Maç"]).split(" - ", 1)
+        wanted = pd.Timestamp(item["Tarih"])
+        matches = []
+        for obj in fixtures:
+            teams = obj.get("teams", {})
+            if (team_token(teams.get("home", {}).get("name", "")) != team_token(home) or
+                team_token(teams.get("away", {}).get("name", "")) != team_token(away)):
+                continue
+            when = pd.Timestamp(obj["fixture"]["date"]).tz_convert("Europe/Istanbul").tz_localize(None)
+            if abs((when - wanted).total_seconds()) <= 10800:
+                matches.append(obj["fixture"]["id"])
+        return matches[0] if len(matches) == 1 else None
+    except Exception:
+        return None
+
+def extract_market_odds(odds_data, market):
+    wanted = "Over 1.5" if market == "1.5 Üst" else "Under 1.5"
+    found = []
+    for event in odds_data:
+        for book in event.get("bookmakers", []):
+            for bet in book.get("bets", []):
+                label = str(bet.get("name", "")).casefold().replace(" ", "")
+                if label not in ("goalsover/under", "over/under", "totalgoals", "goals over/under".replace(" ", "")):
+                    continue
+                for value in bet.get("values", []):
+                    if str(value.get("value", "")).strip().casefold() == wanted.casefold():
+                        try:
+                            odd = float(value["odd"])
+                            if 1.01 <= odd <= 100:
+                                found.append((odd, book.get("name", "Bilinmiyor")))
+                        except (ValueError, TypeError, KeyError):
+                            pass
+    # Highest listed price is informational, not necessarily available to the user.
+    return max(found, key=lambda x: x[0]) if found else None
 
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
 
@@ -614,7 +690,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V1.8")
+    st.subheader("🎟️ Kupon Merkezi • V1.8.2")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -669,59 +745,75 @@ elif menu == "🎟️ Kupon Merkezi":
         "V1.8 oran hesabı kullanıcı tarafından girilen değerlerle yapılır; otomatik oran ve kârlılık doğrulaması henüz yoktur."
     )
 
-    st.markdown("### 💹 V1.8.1 – Oran ve Value Hesaplayıcı")
-    st.caption(
-        "İlk aşamada gerçek bahis oranını SEN giriyorsun. Otomatik oran sağlayıcısı henüz bağlanmadı; "
-        "sistem oran uydurmaz. Girilen oranlar bu tarayıcı oturumunda tutulur, veritabanına kaydedilmez."
-    )
+    st.markdown("### 💹 V1.8.2 – Otomatik Oran ve Value Hesaplayıcı")
+    st.caption("API-Football bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
+    key = api_key()
+    if not key:
+        st.info("Otomatik oran için Streamlit Secrets içine API_FOOTBALL_KEY ekle. Şimdilik elle oran girebilirsin.")
+    elif st.button("🔄 Güncel oranları sorgula (API kotası kullanır)", key="load_live_odds"):
+        st.session_state["auto_odds"] = {}
+        st.session_state["auto_status"] = {}
+        with st.spinner("Maç ve pazar eşleşmeleri kontrol ediliyor..."):
+            for _, item in coupon.iterrows():
+                item_key = f'{item["Maç"]}|{item["Pazar"]}'
+                try:
+                    day = pd.Timestamp(item["Tarih"]).strftime("%Y-%m-%d")
+                    fixture = find_exact_fixture(item, api_fixtures(day, key))
+                    if fixture is None:
+                        st.session_state["auto_status"][item_key] = "Maç eşleşmedi; oran bulunamadı."
+                        continue
+                    match_odd = extract_market_odds(api_odds(fixture, key), item["Pazar"])
+                    if match_odd:
+                        st.session_state["auto_odds"][item_key] = match_odd
+                        st.session_state["auto_status"][item_key] = "Oran bulundu"
+                    else:
+                        st.session_state["auto_status"][item_key] = "Bu maçta 1.5 gol pazarı bulunamadı."
+                except Exception as exc:
+                    st.session_state["auto_status"][item_key] = f"API hatası: {str(exc)[:110]}"
     if coupon.empty:
-        st.info("Oran analizi için önce bu profilde uygun bir kupon seçimi bulunmalı.")
+        st.info("Önce kupon için uygun maç bulunmalı.")
     else:
-        st.info("Oranları kuponu oluşturduğun yerdeki güncel 1.5 Alt/Üst piyasasından kontrol ederek gir.")
         value_rows = []
         for pos, (_, item) in enumerate(coupon.iterrows(), start=1):
+            item_key = f'{item["Maç"]}|{item["Pazar"]}'
+            auto = st.session_state.get("auto_odds", {}).get(item_key)
+            status = st.session_state.get("auto_status", {}).get(item_key)
+            if auto:
+                st.success(f'{item["Maç"]} • {item["Pazar"]}: {auto[0]:.2f} ({auto[1]}) • API kaynağı')
+            elif status:
+                st.caption(f'{item["Maç"]}: {status}')
             label = f'{pos}. {item["Maç"]} — {item["Pazar"]} (model %{item["Model %"]:.1f})'
-            odd = st.number_input(
-                label + " | Ondalık oran (0 = henüz girilmedi)",
-                min_value=0.0, max_value=100.0, value=0.0, step=0.01,
-                format="%.2f", key=f'odd_{mode}_{item["Maç"]}_{item["Pazar"]}'
-            )
-            prob = float(item["Model %"]) / 100.0
-            fair = 1.0 / prob
+            manual = st.number_input(label + " | Elle oran (0 = otomatik varsa onu kullan)",
+                                     min_value=0.0, max_value=100.0, value=0.0, step=0.01,
+                                     format="%.2f", key=f'odd_{mode}_{item["Maç"]}_{item["Pazar"]}')
+            odd = manual if manual >= 1.01 else (auto[0] if auto else 0.0)
+            if 0 < manual < 1.01:
+                st.warning("Oran en az 1,01 olmalı.")
             if odd >= 1.01:
-                ev = 100 * (prob * odd - 1)
-                implied = 100 / odd
-                # No "positive EV" assertion: model calibration and bookmaker margin are unknown.
-                verdict = "Model açısından pozitif" if ev > 0 else "Model açısından negatif"
-                value_rows.append({
-                    "Maç": item["Maç"], "Seçim": item["Pazar"],
-                    "Model %": round(prob * 100, 1), "Girilen oran": round(odd, 2),
-                    "Adil oran*": round(fair, 2), "Oranın ima ettiği %": round(implied, 1),
-                    "Teorik EV %*": round(ev, 1), "Değerlendirme": verdict
-                })
-            elif odd > 0:
-                st.warning("Oran 1,01 veya üzerinde olmalı; 0 bırakırsan hesaplanmaz.")
-
+                prob = float(item["Model %"]) / 100
+                value_rows.append({"Maç": item["Maç"], "Seçim": item["Pazar"],
+                    "Model %": round(prob * 100, 1), "Oran": round(odd, 2),
+                    "Kaynak": "Elle" if manual >= 1.01 else "API-Football",
+                    "Adil oran*": round(1/prob, 2), "İma edilen %": round(100/odd, 1),
+                    "Teorik EV %*": round(100*(prob*odd-1), 1)})
         if value_rows:
             st.dataframe(pd.DataFrame(value_rows), hide_index=True, use_container_width=True)
             if len(value_rows) == len(coupon):
                 combined_odds = 1.0
-                for r in value_rows:
-                    combined_odds *= r["Girilen oran"]
                 combined_prob = 1.0
-                for p in coupon["Model %"]:
-                    combined_prob *= float(p) / 100.0
-                st.metric("Girilen toplam kupon oranı", f"{combined_odds:.2f}")
-                st.metric("Kaba birleşik teorik EV*", f"%{(combined_prob * combined_odds - 1) * 100:.1f}")
+                for row in value_rows:
+                    combined_odds *= row["Oran"]
+                for prob in coupon["Model %"]:
+                    combined_prob *= float(prob)/100
+                st.metric("Toplam kupon oranı", f"{combined_odds:.2f}")
+                st.metric("Kaba birleşik teorik EV*", f"%{100*(combined_prob*combined_odds-1):.1f}")
             else:
-                st.caption("Toplam kupon oranı için bütün seçimlere oran gir.")
+                st.caption("Toplam oran için tüm seçimlerde gerçek oran bulunmalı.")
         else:
-            st.caption("Hesaplamayı görmek için en az bir seçimin oranını gir.")
-        st.warning(
-            "*Adil oran ve EV, modelin tahmin ettiği olasılıklar doğruysa geçerlidir. "
-            "Bu modelin olasılık kalibrasyonu ve oranlı geçmiş kârlılığı henüz doğrulanmadı. "
-            "Pozitif EV gerçek kazanç garantisi değildir. Birleşik hesap seçimlerin bağımsız olduğunu varsayar."
-        )
+            st.info("Oran bulunamadı. API anahtarını kontrol et veya gerçek oranı elle gir.")
+        st.warning("*Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
+                   "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
+                   "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
 elif menu == "🧪 Backtest":
     st.subheader("🧪 Çok Sezonlu Backtest • V1.8")
@@ -874,4 +966,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.8.1 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.8.2 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
