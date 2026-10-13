@@ -252,6 +252,7 @@ def run_backtest(matches):
 
         rows.append({
             "Tarih": target["datetime"].strftime("%d.%m.%Y"),
+            "Sezon": target["season"],
             "Ev": target["home"],
             "Dep": target["away"],
             "Skor": f"{hg}-{ag}",
@@ -349,6 +350,29 @@ def threshold_audit(bt, confidence_col, correct_col, thresholds=(50,55,60,65,70,
         rows.append([f"%{threshold}+", n, accuracy, coverage])
     return pd.DataFrame(rows, columns=["Güven Eşiği", "Maç", "İsabet %", "Kapsama %"])
 
+def choose_threshold(training, confidence_col, correct_col, minimum=30):
+    """Select once on development seasons; never inspect holdout outcomes."""
+    candidates = threshold_audit(training, confidence_col, correct_col)
+    eligible = candidates[candidates["Maç"] >= minimum].copy()
+    if eligible.empty:
+        return None
+    # Prioritize observed accuracy; prefer wider coverage on a tie.
+    best = eligible.sort_values(["İsabet %", "Maç"], ascending=[False, False]).iloc[0]
+    return int(best["Güven Eşiği"].replace("%", "").replace("+", ""))
+
+
+def evaluate_holdout(train, test, confidence_col, correct_col, minimum=30):
+    threshold = choose_threshold(train, confidence_col, correct_col, minimum)
+    if threshold is None:
+        return {"Eşik": "Seçilemedi", "Eğitim maç": len(train), "Test maç": len(test),
+                "Seçilen test": 0, "Kapsama %": None, "Test isabet %": None}
+    chosen = test[test[confidence_col] >= threshold]
+    return {"Eşik": f"%{threshold}+", "Eğitim maç": len(train), "Test maç": len(test),
+            "Seçilen test": len(chosen),
+            "Kapsama %": round(100 * len(chosen) / len(test), 1) if len(test) else None,
+            "Test isabet %": round(100 * chosen[correct_col].mean(), 1) if len(chosen) else None}
+
+
 def prediction_table(pred):
     rows = [
         ["Maç Sonucu", "1", pred["1"]],
@@ -398,7 +422,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Çok sezonlu analiz ve backtest • V1.5</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Çok sezonlu analiz ve backtest • V1.6</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -438,7 +462,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("Maç Analizi • V1.5")
+    st.subheader("Maç Analizi • V1.6")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
@@ -504,7 +528,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🧪 Backtest":
-    st.subheader("🧪 Çok Sezonlu Backtest • V1.5")
+    st.subheader("🧪 Çok Sezonlu Backtest • V1.6")
     st.caption(
         "Her geçmiş maç, yalnızca o maçtan daha önce oynanmış karşılaşmalar kullanılarak yeniden tahmin edilir. "
         "Bu test oran/kârlılık testi değil; modelin sonuç sınıflandırma isabetini ölçer. "
@@ -541,6 +565,42 @@ elif menu == "🧪 Backtest":
             ["KG Var/Yok", total, acc_kg],
         ], columns=["Pazar", "Test Maçı", "İsabet %"])
         st.dataframe(summary, hide_index=True, use_container_width=True)
+
+        st.markdown("### 🔒 Bağımsız Sezon Doğrulaması")
+        st.caption(
+            "Geliştirme: 2023-24, 2024-25, 2025-26. Ayrılmış test: 2026-27. "
+            "Eşikler yalnızca geliştirme sezonlarında seçilir; test sezonunun sonuçları "
+            "eşik belirlemek için kullanılmaz. Test sezonundaki tahminler maçtan önceki "
+            "sonuçlardan yararlanabilir (walk-forward)."
+        )
+        train = bt[bt["Sezon"].isin(["2023-24", "2024-25", "2025-26"])].copy()
+        test = bt[bt["Sezon"] == "2026-27"].copy()
+        if train.empty or test.empty:
+            st.warning("Geliştirme veya 2026-27 test sezonunda yeterli veri bulunamadı.")
+        else:
+            markets = {
+                "1-X-2": ("1X2 Güven", "1X2 Doğru"),
+                "1.5 Alt/Üst": ("1.5 Güven", "1.5 Doğru"),
+                "2.5 Alt/Üst": ("2.5 Güven", "2.5 Doğru"),
+                "KG Var/Yok": ("KG Güven", "KG Doğru"),
+            }
+            result_rows = []
+            for label, (confidence, correct) in markets.items():
+                r = evaluate_holdout(train, test, confidence, correct, minimum=30)
+                r["Pazar"] = label
+                r["Test genel isabet %"] = round(100 * test[correct].mean(), 1)
+                result_rows.append(r)
+            cols = ["Pazar", "Eşik", "Eğitim maç", "Test maç", "Seçilen test", "Kapsama %", "Test isabet %", "Test genel isabet %"]
+            st.dataframe(pd.DataFrame(result_rows)[cols], hide_index=True, use_container_width=True)
+            st.warning(
+                "2026-27 sezonu henüz tamamlanmadı. Bağımsız test sayısı düşükse sonuç "
+                "kesin değildir. Eşik seçimi geliştirme verisinde yapılmış olsa bile, "
+                "bu ekrana bakarak eşikleri değiştirmek test bağımsızlığını bozar. "
+                "İsabet oranı kârlılık veya gelecekte başarı garantisi değildir."
+            )
+            st.markdown("#### 1.5 Alt/Üst: test sezonunda sabit eşikler")
+            st.dataframe(threshold_audit(test, "1.5 Güven", "1.5 Doğru"),
+                         hide_index=True, use_container_width=True)
 
         st.markdown("### 🎯 Güven Eşiği Analizi")
         st.caption(
@@ -601,7 +661,7 @@ elif menu == "🧪 Backtest":
         st.info(
             "Test birden fazla sezondaki maçları tarih sırasıyla kullanır. "
             "Her tahmin yalnızca kendi maçından önceki sonuçları görür. "
-            "Kupon motorundan önce bağımsız dönem doğrulaması gerekir."
+            "Yukarıdaki ayrılmış sezon testi kupon motorundan önce değerlendirilmelidir."
         )
 
 else:
@@ -618,4 +678,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.5 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.6 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
