@@ -192,6 +192,106 @@ def league_table_before(completed, before):
     if tab.empty:return tab
     return tab.sort_values(["P","AV","AG"],ascending=[False,False,False]).reset_index(drop=True).assign(Sıra=lambda x: range(1,len(x)+1))[["Sıra","Takım","O","G","B","M","AG","YG","AV","P"]]
 
+def market_backtest_reliability(bt, market, confidence):
+    """Historical classification reliability at a comparable confidence level.
+    Uses only matches already available in the supplied walk-forward backtest.
+    This is not an odds/profit backtest.
+    """
+    mapping = {
+        "1-X-2": ("1X2 Güven", "1X2 Doğru"),
+        "Çifte Şans": ("ÇS Güven", "ÇS Doğru"),
+        "1.5 Gol": ("1.5 Güven", "1.5 Doğru"),
+        "2.5 Gol": ("2.5 Güven", "2.5 Doğru"),
+        "KG": ("KG Güven", "KG Doğru"),
+    }
+    if bt is None or bt.empty or market not in mapping:
+        return None
+    ccol, okcol = mapping[market]
+    if ccol not in bt.columns or okcol not in bt.columns:
+        return None
+    # Comparable band: current confidence or higher, but never below 60.
+    threshold = max(60.0, float(confidence) - 3.0)
+    sample = bt[bt[ccol] >= threshold]
+    # If too sparse, broaden once; still report sample size explicitly.
+    if len(sample) < 30:
+        threshold = max(55.0, float(confidence) - 8.0)
+        sample = bt[bt[ccol] >= threshold]
+    if sample.empty:
+        return None
+    return {
+        "Eşik": round(threshold, 1),
+        "Örnek": int(len(sample)),
+        "İsabet %": round(100 * sample[okcol].mean(), 1),
+    }
+
+
+def smart_final_decision(pred, signals, bt_prior, home, away, wf_home=None, wf_away=None, h2h=None):
+    """V2.2 transparent final decision layer.
+    Model probability is NOT recalibrated. Historical reliability and context are
+    used as support/veto checks rather than being blended into a fake probability.
+    """
+    rows = []
+    for _, r in signals.iterrows():
+        pick = r["Model Seçimi"]
+        market = r["Pazar"]
+        conf = float(r["Model %"])
+        if pick == "PAS":
+            continue
+        rel = market_backtest_reliability(bt_prior, market, conf)
+        hist_acc = rel["İsabet %"] if rel else None
+        n = rel["Örnek"] if rel else 0
+
+        support = 0
+        notes = []
+        # Backtest is the main validation gate; require meaningful sample.
+        if rel and n >= 30:
+            if hist_acc >= 70:
+                support += 2; notes.append(f"geçmiş isabet %{hist_acc} (n={n})")
+            elif hist_acc >= 60:
+                support += 1; notes.append(f"geçmiş isabet %{hist_acc} (n={n})")
+            else:
+                support -= 2; notes.append(f"zayıf geçmiş isabet %{hist_acc} (n={n})")
+        else:
+            support -= 1; notes.append("backtest örneği yetersiz")
+
+        # Context is only a confirmation/veto signal; it never changes Model %.
+        if wf_home and wf_away and market in ("1-X-2", "Çifte Şans"):
+            hf=float(wf_home["Ağırlıklı form %"]); af=float(wf_away["Ağırlıklı form %"])
+            if pick in ("1", "1X") and hf >= af + 8:
+                support += 1; notes.append("ağırlıklı form ev yönünü destekliyor")
+            elif pick in ("2", "X2") and af >= hf + 8:
+                support += 1; notes.append("ağırlıklı form deplasman yönünü destekliyor")
+            elif pick == "12" and abs(hf-af) <= 12:
+                notes.append("formlar yakın")
+        if h2h and h2h.get("H2H maç",0) >= 3:
+            if market == "2.5 Gol":
+                rate=float(h2h["2.5 Üst %"])
+                agrees = ("Üst" in pick and rate >= 60) or ("Alt" in pick and rate <= 40)
+                if agrees: support += 1; notes.append("H2H gol yönünü destekliyor")
+            elif market == "KG":
+                rate=float(h2h["KG Var %"])
+                agrees = (pick == "KG Var" and rate >= 60) or (pick == "KG Yok" and rate <= 40)
+                if agrees: support += 1; notes.append("H2H KG yönünü destekliyor")
+
+        # Conservative classification. KG remains experimental unless evidence is exceptional.
+        if market == "KG":
+            decision = "PAS" if support < 3 or conf < 75 else "ALTERNATİF"
+        elif support >= 3 and conf >= 70 and n >= 30:
+            decision = "ANA SEÇİM"
+        elif support >= 1 and conf >= 62 and n >= 30:
+            decision = "ALTERNATİF"
+        else:
+            decision = "PAS"
+        rows.append({"Pazar":market,"Seçim":pick,"Model %":round(conf,1),
+                     "Backtest %":hist_acc,"Backtest n":n,"Destek":support,
+                     "Karar":decision,"Gerekçe":"; ".join(notes)})
+    out=pd.DataFrame(rows)
+    if out.empty: return out
+    rank={"ANA SEÇİM":0,"ALTERNATİF":1,"PAS":2}
+    out["_rank"]=out["Karar"].map(rank)
+    return out.sort_values(["_rank","Destek","Model %"],ascending=[True,False,False]).drop(columns="_rank")
+
+
 def match_report(pred, signals, home, away, wf_home=None, wf_away=None, h2h=None):
     candidates=[]
     for _,r in signals.iterrows():
@@ -314,6 +414,12 @@ def run_backtest(matches):
         actual_over25 = hg + ag >= 3
         actual_btts = hg > 0 and ag > 0
 
+        dc_probs = {"1X": pred["1X"], "X2": pred["X2"], "12": pred["12"]}
+        dc_pick = max(dc_probs, key=dc_probs.get)
+        dc_correct = ((dc_pick == "1X" and actual_1x2 in ("1", "X")) or
+                      (dc_pick == "X2" and actual_1x2 in ("X", "2")) or
+                      (dc_pick == "12" and actual_1x2 in ("1", "2")))
+
         rows.append({
             "Tarih": target["datetime"].strftime("%d.%m.%Y"),
             "Sezon": target["season"],
@@ -324,6 +430,9 @@ def run_backtest(matches):
             "Tahmin 1X2": predicted_1x2,
             "1X2 Doğru": predicted_1x2 == actual_1x2,
             "1X2 Güven": pred[predicted_1x2],
+            "ÇS Tahmin": dc_pick,
+            "ÇS Güven": dc_probs[dc_pick],
+            "ÇS Doğru": dc_correct,
             "1.5 Tahmin": pred["1.5 Üst"] >= 50,
             "1.5 Güven": max(pred["1.5 Üst"], pred["1.5 Alt"]),
             "1.5 Gerçek": actual_over15,
@@ -486,7 +595,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V2.1.1</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V2.2</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -731,7 +840,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("📊 Maç Analiz Merkezi • V2.1.1")
+    st.subheader("📊 Maç Analiz Merkezi • V2.2")
     st.caption("Tek ekranda form, saha performansı, gol eğilimleri, Poisson modeli, güven filtresi ve isteğe bağlı canlı 1.5 gol oranı.")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
@@ -757,7 +866,7 @@ elif menu == "📊 Maç Analizi":
         n = st.radio("Detay için son kaç maç?", [5,10], horizontal=True)
         st.caption("Tüm istatistikler yalnızca seçilen maçtan önce oynanmış ve skoru bulunan karşılaşmalardan hesaplanır.")
 
-        # V2.1.1 bağlamsal veri katmanı: seçilen maçtan ÖNCEKİ veriler בלבד.
+        # V2.2 bağlamsal veri katmanı: seçilen maçtan ÖNCEKİ veriler בלבד.
         home_hist10 = team_history(completed, home, before, 10)
         away_hist10 = team_history(completed, away, before, 10)
         wf_h = weighted_form(home_hist10, home)
@@ -765,7 +874,7 @@ elif menu == "📊 Maç Analizi":
         h2h, h2h_df = h2h_stats(completed, home, away, before, limit=8)
         table_before = league_table_before(completed, before)
 
-        st.markdown("### 🧭 V2.1.1 bağlamsal veri")
+        st.markdown("### 🧭 V2.2 bağlamsal veri")
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**Ağırlıklı son form**")
@@ -828,7 +937,7 @@ elif menu == "📊 Maç Analizi":
             if strong_count == 0: st.warning("Ana filtreler güçlü sinyal bulamadı: PAS.")
             else: st.success(f"{strong_count} pazar güven filtresini geçti.")
 
-            st.markdown("### 📝 V2.1.1 maç raporu")
+            st.markdown("### 📝 V2.2 maç raporu")
             best, alt, report_reasons = match_report(pred, sig, home, away, wf_h, wf_a, h2h)
             if best:
                 st.success(f"En güçlü pazar: {best[1]} • {best[2]} • model %{best[0]:.1f} • {best[3]}")
@@ -836,7 +945,28 @@ elif menu == "📊 Maç Analizi":
             else:
                 st.warning("Ana filtrelerde yeterince güçlü pazar yok: PAS.")
             st.caption(" ".join(report_reasons))
-            st.caption("H2H ve ağırlıklı form bağlamsal göstergedir; ana Poisson yüzdesine henüz doğrudan eklenmez. Böylece doğrulanmamış ağırlıklarla modeli yapay olarak şişirmeyiz.")
+            st.caption("H2H ve ağırlıklı form bağlamsal göstergedir; ana Poisson yüzdesine doğrudan eklenmez. Böylece doğrulanmamış ağırlıklarla modeli yapay olarak şişirmeyiz.")
+
+            st.markdown("### 🧭 V2.2 Akıllı Nihai Karar Motoru")
+            st.caption("Karar motoru Model % değerini değiştirmez. Seçilen maçtan önceki walk-forward backtest güvenilirliğini ana doğrulama kapısı; ağırlıklı form ve H2H'yi yalnızca destek/veto sinyali olarak kullanır.")
+            prior_for_bt = completed[completed["datetime"] < before].copy()
+            bt_prior = run_backtest(prior_for_bt)
+            final_decisions = smart_final_decision(pred, sig, bt_prior, home, away, wf_h, wf_a, h2h)
+            if final_decisions.empty:
+                st.warning("Nihai karar motoru değerlendirilebilir pazar bulamadı: PAS.")
+            else:
+                st.dataframe(final_decisions, hide_index=True, use_container_width=True)
+                ana = final_decisions[final_decisions["Karar"] == "ANA SEÇİM"]
+                alt2 = final_decisions[final_decisions["Karar"] == "ALTERNATİF"]
+                if not ana.empty:
+                    r0=ana.iloc[0]
+                    st.success(f'ANA SEÇİM: {r0["Pazar"]} • {r0["Seçim"]} • model %{r0["Model %"]} • geçmiş isabet %{r0["Backtest %"]} (n={int(r0["Backtest n"])})')
+                elif not alt2.empty:
+                    r0=alt2.iloc[0]
+                    st.info(f'ANA SEÇİM yok. En iyi ALTERNATİF: {r0["Pazar"]} • {r0["Seçim"]} • model %{r0["Model %"]}')
+                else:
+                    st.warning("Tüm pazarlar: PAS. Model sinyali var olsa bile tarihsel doğrulama/bağlam yeterli değil.")
+            st.caption("Backtest yüzdesi sonuç sınıflandırma isabetidir; bookmaker oranı veya kârlılık testi değildir.")
 
             st.markdown("### 💹 OddsPapi • seçili maçın 1.5 gol oranı")
             st.caption("Canlı oran sorgusu isteğe bağlıdır ve API kotası kullanır. Oran yoksa değer uydurulmaz.")
@@ -879,7 +1009,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V2.1.1")
+    st.subheader("🎟️ Kupon Merkezi • V2.2")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -934,7 +1064,7 @@ elif menu == "🎟️ Kupon Merkezi":
         "Otomatik oran OddsPapi ile yalnızca doğrulanmış maç ve pazarlarda denenir; geçmiş kârlılık doğrulanmadı."
     )
 
-    st.markdown("### 🎯 V2.1.1 – AL / PAS Value Karar Motoru")
+    st.markdown("### 🎯 V2.2 – AL / PAS Value Karar Motoru")
     st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
     key = api_key()
     if not key:
@@ -1051,7 +1181,7 @@ elif menu == "🎟️ Kupon Merkezi":
                     "Karar*": decision, "Neden": reason})
         if value_rows:
             value_df = pd.DataFrame(value_rows)
-            st.markdown("#### 🎯 V2.1.1 kararları")
+            st.markdown("#### 🎯 V2.2 kararları")
             st.dataframe(value_df, hide_index=True, use_container_width=True)
             al_count = int((value_df["Karar*"] == "AL ADAYI").sum())
             pas_count = int((value_df["Karar*"] == "PAS").sum())
@@ -1059,20 +1189,20 @@ elif menu == "🎟️ Kupon Merkezi":
             c1.metric("AL adayı", al_count)
             c2.metric("PAS", pas_count)
             if al_count:
-                st.success("AL ADAYI = model ve mevcut oran V2.1.1 value eşiğini geçti. Bu bir bahis tavsiyesi veya kâr garantisi değildir.")
+                st.success("AL ADAYI = model ve mevcut oran V2.2 value eşiğini geçti. Bu bir bahis tavsiyesi veya kâr garantisi değildir.")
             else:
-                st.info("Bu kuponda V2.1.1 value eşiğini geçen seçim yok: PAS.")
+                st.info("Bu kuponda V2.2 value eşiğini geçen seçim yok: PAS.")
             if len(value_rows) == len(coupon):
                 combined_odds = 1.0
                 for row in value_rows:
                     combined_odds *= row["Oran"]
                 st.metric("Toplam kupon oranı", f"{combined_odds:.2f}")
-                st.caption("Birleşik teorik EV gösterimi V2.1.1'da kaldırıldı; model yüzdeleri kalibre edilmiş kesin olasılıklar değildir.")
+                st.caption("Birleşik teorik EV gösterimi V2.2'da kaldırıldı; model yüzdeleri kalibre edilmiş kesin olasılıklar değildir.")
             else:
                 st.caption("Toplam oran için tüm seçimlerde gerçek oran bulunmalı.")
         else:
             st.info("Otomatik oran bulunamadı. OddsPapi erişimini kontrol et veya gerçek oranı elle gir.")
-        st.warning("*V2.1.1 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
+        st.warning("*V2.2 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
                    "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
@@ -1227,4 +1357,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V2.1.1 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V2.2 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
