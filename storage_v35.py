@@ -1,4 +1,4 @@
-"""V3.7 persistent odds ledger. Supabase is the primary store; local/session is fallback."""
+"""V3.8 persistent odds ledger. Supabase is primary; diagnostics are explicit and safe."""
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -12,7 +12,12 @@ TABLE = 'odds_records'
 def _cfg():
     try:
         url = str(st.secrets.get('SUPABASE_URL', '')).strip().rstrip('/')
-        key = str(st.secrets.get('SUPABASE_KEY', '')).strip()
+        # Accept common secret names so a correctly stored Supabase secret is not missed.
+        key = str(
+            st.secrets.get('SUPABASE_SECRET_KEY', '')
+            or st.secrets.get('SUPABASE_SERVICE_ROLE_KEY', '')
+            or st.secrets.get('SUPABASE_KEY', '')
+        ).strip()
     except Exception:
         url, key = '', ''
     return url, key
@@ -141,11 +146,21 @@ def save_records(records=None):
     if records is None:
         records = st.session_state.get('v31_records', {})
     _local_save(records)
-    if cloud_ready():
+    if not cloud_ready():
+        msg = 'Supabase ayarı eksik: SUPABASE_URL ve Secret key bulunamadı.'
+        st.session_state['v37_cloud_ok'] = False
+        st.session_state['v37_cloud_error'] = msg
+        raise RuntimeError(msg)
+    try:
         _cloud_upsert(records)
         st.session_state['v37_cloud_ok'] = True
         st.session_state.pop('v37_cloud_error', None)
-    st.session_state.v31_records = records
+        st.session_state.v31_records = records
+    except Exception as exc:
+        msg = str(exc)[:500]
+        st.session_state['v37_cloud_ok'] = False
+        st.session_state['v37_cloud_error'] = msg
+        raise RuntimeError('Supabase kayıt hatası: ' + msg) from exc
 
 
 def settle_records(outcomes):
@@ -170,12 +185,12 @@ def settle_records(outcomes):
 
 def cloud_status():
     if not cloud_ready():
-        return False, 'SUPABASE_URL / SUPABASE_KEY bulunamadı.'
+        return False, 'Supabase ayarı eksik: SUPABASE_URL ve Secret key bulunamadı.'
     try:
         data = _cloud_load()
         st.session_state.v31_records = data
         st.session_state['v37_cloud_ok'] = True
-        return True, f'Supabase kalıcı veritabanı bağlı • {len(data)} oran kaydı.'
+        return True, f'Supabase bağlantısı doğrulandı • {len(data)} kalıcı oran kaydı.'
     except Exception as exc:
         st.session_state['v37_cloud_ok'] = False
         return False, 'Supabase bağlantı hatası: ' + str(exc)[:180]

@@ -1,4 +1,4 @@
-"""V3.7 - Oran kaydi ve deneme ROI modulu. Model kodundan bagimsizdir."""
+"""V3.8 - Kalıcı oran kaydı + açık Supabase hata tanısı."""
 import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -41,7 +41,7 @@ def _restore(upload):
 
 def render(open_candidates, settled):
     _init()
-    st.markdown('## 💾 V3.7 • Maç öncesi oran defteri')
+    st.markdown('## 💾 V3.8 • Maç öncesi oran defteri')
     st.caption('Karar motoru değişmedi. Oran kayıtları Supabase kalıcı veritabanına yazılır; CSV ayrıca taşınabilir yedektir.')
     ok, msg = cloud_status()
     (st.success if ok else st.warning)(('☁️ ' if ok else '⚠️ ') + msg)
@@ -76,8 +76,15 @@ def render(open_candidates, settled):
                 elif key in st.session_state.v31_records: st.warning('Bu seçimin oranı zaten kayıtlı; değiştirilmez.')
                 else:
                     st.session_state.v31_records[key] = dict(id=key, tarih=kickoff.isoformat(), mac=str(r['Maç']), pazar=str(r['Pazar']), oran=float(odd), kaynak=source.strip(), kayit_zamani=at.isoformat(), tutar=float(stake), model_pct=float(r.get('Model %', 0) or 0), backtest_pct=float(r.get('Backtest %', 0) or 0))
-                    save_records(st.session_state.v31_records)
-                    st.success('Oran kilitlendi ve Supabase kalıcı veritabanına yazıldı.')
+                    try:
+                        save_records(st.session_state.v31_records)
+                        st.success('✅ Oran Supabase’e kalıcı olarak yazıldı.')
+                    except Exception as exc:
+                        # Yanlış başarı mesajı verme; başarısız kaydı oturumdan geri al.
+                        st.session_state.v31_records.pop(key, None)
+                        st.error('❌ Supabase’e yazılamadı.')
+                        st.code(str(exc), language=None)
+                        st.info('Bu hata mesajının ekran görüntüsünü gönder; Secret key ekranda gösterilmez.')
         else:
             st.info('Yeni oran kaydedilecek başlamamış ve kayıtsız sinyal yok.')
     else:
@@ -124,4 +131,4 @@ def render(open_candidates, settled):
         c4.metric('Sanal ROI',f'%{100*pnl/wagered:+.1f}' if wagered else '—')
     else:
         st.info('Oranı kaydedilmiş maçlar sonuçlandığında sanal ROI burada hesaplanacak.')
-    st.info('V3.7: Supabase bağlıysa kayıtlar deploy/restart sonrasında da korunur. CSV yedeği yine indirilebilir. Bu gerçek para yatırımı değildir; kâr garantisi yoktur.')
+    st.info('V3.8: Supabase bağlıysa kayıtlar deploy/restart sonrasında da korunur. CSV yedeği yine indirilebilir. Bu gerçek para yatırımı değildir; kâr garantisi yoktur.')
