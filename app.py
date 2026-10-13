@@ -144,6 +144,68 @@ def team_stats(history, team):
 
 
 
+
+def weighted_form(history, team):
+    """Recency-weighted form: newest match gets the largest weight."""
+    if history.empty:
+        return None
+    h = history.sort_values("datetime").copy()
+    weights = list(range(1, len(h)+1))
+    pts = gf = ga = 0.0
+    sw = float(sum(weights))
+    for w, (_, r) in zip(weights, h.iterrows()):
+        is_home = r["home"] == team
+        scored = float(r["home_goals"] if is_home else r["away_goals"])
+        conceded = float(r["away_goals"] if is_home else r["home_goals"])
+        gf += w * scored; ga += w * conceded
+        pts += w * (3 if scored > conceded else 1 if scored == conceded else 0)
+    return {"Ağırlıklı form %": round(100*pts/(3*sw),1),
+            "Ağırlıklı gol/maç": round(gf/sw,2), "Ağırlıklı yenen/maç": round(ga/sw,2)}
+
+def h2h_stats(completed, home, away, before, limit=8):
+    d=completed[(completed["datetime"]<before) & (((completed["home"]==home)&(completed["away"]==away))|((completed["home"]==away)&(completed["away"]==home)))].sort_values("datetime",ascending=False).head(limit)
+    if d.empty: return None, d
+    hw=dr=aw=over25=btts=0
+    for _,r in d.iterrows():
+        hg,ag=int(r["home_goals"]),int(r["away_goals"])
+        # result from selected home team's perspective
+        sf = hg if r["home"]==home else ag; sa = ag if r["home"]==home else hg
+        hw += sf>sa; dr += sf==sa; aw += sf<sa
+        over25 += hg+ag>=3; btts += hg>0 and ag>0
+    n=len(d)
+    return {"H2H maç":n, f"{home} G":hw,"B":dr,f"{away} G":aw,"2.5 Üst %":round(100*over25/n,1),"KG Var %":round(100*btts/n,1)}, d
+
+def league_table_before(completed, before):
+    d=completed[completed["datetime"]<before]
+    teams=sorted(set(d["home"])|set(d["away"]))
+    rows=[]
+    for t in teams:
+        m=d[(d["home"]==t)|(d["away"]==t)]; pts=gf=ga=w=dr=l=0
+        for _,r in m.iterrows():
+            ih=r["home"]==t; a=int(r["home_goals"] if ih else r["away_goals"]); b=int(r["away_goals"] if ih else r["home_goals"])
+            gf+=a; ga+=b
+            if a>b: w+=1; pts+=3
+            elif a==b: dr+=1; pts+=1
+            else: l+=1
+        rows.append({"Takım":t,"O":len(m),"G":w,"B":dr,"M":l,"AG":gf,"YG":ga,"AV":gf-ga,"P":pts})
+    tab=pd.DataFrame(rows)
+    if tab.empty:return tab
+    return tab.sort_values(["P","AV","AG"],ascending=[False,False,False]).reset_index(drop=True).assign(Sıra=lambda x: range(1,len(x)+1))[["Sıra","Takım","O","G","B","M","AG","YG","AV","P"]]
+
+def match_report(pred, signals, home, away, wf_home=None, wf_away=None, h2h=None):
+    candidates=[]
+    for _,r in signals.iterrows():
+        if r["Model Seçimi"] != "PAS" and r["Durum"] in ("GÜÇLÜ","UYGUN"):
+            candidates.append((float(r["Model %"]), r["Pazar"], r["Model Seçimi"], r["Durum"]))
+    candidates.sort(reverse=True)
+    best=candidates[0] if candidates else None; alt=candidates[1] if len(candidates)>1 else None
+    reasons=[]
+    if wf_home and wf_away:
+        reasons.append(f'Ağırlıklı form: {home} %{wf_home["Ağırlıklı form %"]}, {away} %{wf_away["Ağırlıklı form %"]}.')
+    if h2h: reasons.append(f'Son {h2h["H2H maç"]} H2H: 2.5 Üst %{h2h["2.5 Üst %"]}, KG Var %{h2h["KG Var %"]}.')
+    reasons.append(f'Beklenen gol: {home} {pred["Ev gol beklentisi"]} - {away} {pred["Dep gol beklentisi"]}.')
+    return best, alt, reasons
+
 def poisson_pmf(k, lam):
     import math
     return math.exp(-lam) * (lam ** k) / math.factorial(k)
@@ -424,7 +486,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V2.0</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V2.1</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -669,7 +731,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("📊 Maç Analiz Merkezi • V2.0")
+    st.subheader("📊 Maç Analiz Merkezi • V2.1")
     st.caption("Tek ekranda form, saha performansı, gol eğilimleri, Poisson modeli, güven filtresi ve isteğe bağlı canlı 1.5 gol oranı.")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
@@ -734,6 +796,16 @@ elif menu == "📊 Maç Analizi":
             if strong_count == 0: st.warning("Ana filtreler güçlü sinyal bulamadı: PAS.")
             else: st.success(f"{strong_count} pazar güven filtresini geçti.")
 
+            st.markdown("### 📝 V2.1 maç raporu")
+            best, alt, report_reasons = match_report(pred, sig, home, away, wf_h, wf_a, h2h)
+            if best:
+                st.success(f"En güçlü pazar: {best[1]} • {best[2]} • model %{best[0]:.1f} • {best[3]}")
+                if alt: st.info(f"Alternatif: {alt[1]} • {alt[2]} • model %{alt[0]:.1f}")
+            else:
+                st.warning("Ana filtrelerde yeterince güçlü pazar yok: PAS.")
+            st.caption(" ".join(report_reasons))
+            st.caption("H2H ve ağırlıklı form bağlamsal göstergedir; ana Poisson yüzdesine henüz doğrudan eklenmez. Böylece doğrulanmamış ağırlıklarla modeli yapay olarak şişirmeyiz.")
+
             st.markdown("### 💹 OddsPapi • seçili maçın 1.5 gol oranı")
             st.caption("Canlı oran sorgusu isteğe bağlıdır ve API kotası kullanır. Oran yoksa değer uydurulmaz.")
             live_key = api_key()
@@ -775,7 +847,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V2.0")
+    st.subheader("🎟️ Kupon Merkezi • V2.1")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -830,7 +902,7 @@ elif menu == "🎟️ Kupon Merkezi":
         "Otomatik oran OddsPapi ile yalnızca doğrulanmış maç ve pazarlarda denenir; geçmiş kârlılık doğrulanmadı."
     )
 
-    st.markdown("### 🎯 V2.0 – AL / PAS Value Karar Motoru")
+    st.markdown("### 🎯 V2.1 – AL / PAS Value Karar Motoru")
     st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
     key = api_key()
     if not key:
@@ -947,7 +1019,7 @@ elif menu == "🎟️ Kupon Merkezi":
                     "Karar*": decision, "Neden": reason})
         if value_rows:
             value_df = pd.DataFrame(value_rows)
-            st.markdown("#### 🎯 V2.0 kararları")
+            st.markdown("#### 🎯 V2.1 kararları")
             st.dataframe(value_df, hide_index=True, use_container_width=True)
             al_count = int((value_df["Karar*"] == "AL ADAYI").sum())
             pas_count = int((value_df["Karar*"] == "PAS").sum())
@@ -955,20 +1027,20 @@ elif menu == "🎟️ Kupon Merkezi":
             c1.metric("AL adayı", al_count)
             c2.metric("PAS", pas_count)
             if al_count:
-                st.success("AL ADAYI = model ve mevcut oran V2.0 value eşiğini geçti. Bu bir bahis tavsiyesi veya kâr garantisi değildir.")
+                st.success("AL ADAYI = model ve mevcut oran V2.1 value eşiğini geçti. Bu bir bahis tavsiyesi veya kâr garantisi değildir.")
             else:
-                st.info("Bu kuponda V2.0 value eşiğini geçen seçim yok: PAS.")
+                st.info("Bu kuponda V2.1 value eşiğini geçen seçim yok: PAS.")
             if len(value_rows) == len(coupon):
                 combined_odds = 1.0
                 for row in value_rows:
                     combined_odds *= row["Oran"]
                 st.metric("Toplam kupon oranı", f"{combined_odds:.2f}")
-                st.caption("Birleşik teorik EV gösterimi V2.0'da kaldırıldı; model yüzdeleri kalibre edilmiş kesin olasılıklar değildir.")
+                st.caption("Birleşik teorik EV gösterimi V2.1'da kaldırıldı; model yüzdeleri kalibre edilmiş kesin olasılıklar değildir.")
             else:
                 st.caption("Toplam oran için tüm seçimlerde gerçek oran bulunmalı.")
         else:
             st.info("Otomatik oran bulunamadı. OddsPapi erişimini kontrol et veya gerçek oranı elle gir.")
-        st.warning("*V2.0 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
+        st.warning("*V2.1 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
                    "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
@@ -1123,4 +1195,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V2.0 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V2.1 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
