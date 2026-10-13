@@ -1,4 +1,4 @@
-"""V3.9.1 persistent odds ledger. Supabase is primary; safe connection diagnostics included."""
+"""V3.9.2 persistent odds ledger. Supabase is primary; verified read/write diagnostics included."""
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -98,10 +98,18 @@ def _cloud_upsert(records):
     resp = requests.post(
         f'{url}/rest/v1/{TABLE}',
         params={'on_conflict':'match_key,market,selection'},
-        headers=_headers('resolution=merge-duplicates,return=minimal'),
+        headers=_headers('resolution=merge-duplicates,return=representation'),
         json=payload, timeout=15
     )
-    resp.raise_for_status()
+    if not (200 <= resp.status_code < 300):
+        raise RuntimeError(f'UPSERT HTTP {resp.status_code}: {(resp.text or "")[:350]}')
+    try:
+        written = resp.json()
+    except Exception:
+        written = []
+    if len(written) < len(payload):
+        raise RuntimeError(f'UPSERT doğrulaması başarısız: {len(payload)} kayıt gönderildi, {len(written)} kayıt döndü.')
+    return len(written)
 
 
 def _local_load():
@@ -228,3 +236,46 @@ def cloud_diagnostics():
     except Exception as exc:
         out['message'] = f'Bağlantı isteği başarısız: {str(exc)[:250]}'
     return out
+
+
+def cloud_write_probe():
+    """Insert one harmless diagnostic row, verify it can be read, then delete it. Never returns the key."""
+    url, key = _cfg()
+    if not cloud_ready():
+        return {'ok': False, 'stage': 'config', 'status': None, 'message': 'SUPABASE_URL veya Secret key eksik.'}
+    probe_key = '__v392_write_probe__'
+    now = datetime.now(timezone.utc).isoformat()
+    row = {
+        'match_key': probe_key, 'match_date': now, 'home_team': 'WRITE', 'away_team': 'PROBE',
+        'market': 'DIAGNOSTIC', 'selection': 'TEST', 'model_pct': 0, 'backtest_pct': 0,
+        'odds': 1.0, 'bookmaker': 'V3.9.2', 'stake': 1.0, 'locked_at': now,
+        'status': 'TEST', 'home_score': None, 'away_score': None, 'is_hit': None,
+        'profit_loss': None, 'settled_at': None
+    }
+    try:
+        post = requests.post(
+            f'{url}/rest/v1/{TABLE}',
+            headers=_headers('return=representation'), json=row, timeout=12
+        )
+        if not (200 <= post.status_code < 300):
+            body = (post.text or '').replace(key, '[GIZLI]')[:400]
+            return {'ok': False, 'stage': 'insert', 'status': post.status_code, 'message': f'INSERT reddedildi: {body}'}
+        get = requests.get(
+            f'{url}/rest/v1/{TABLE}',
+            params={'select':'id,match_key', 'match_key':f'eq.{probe_key}', 'limit':'1'},
+            headers=_headers(), timeout=12
+        )
+        if not (200 <= get.status_code < 300):
+            return {'ok': False, 'stage': 'verify', 'status': get.status_code, 'message': 'Test satırı yazıldı ancak geri okuma doğrulanamadı.'}
+        found = bool(get.json())
+        if not found:
+            return {'ok': False, 'stage': 'verify', 'status': get.status_code, 'message': 'INSERT başarılı göründü fakat test satırı tabloda bulunamadı.'}
+        delete = requests.delete(
+            f'{url}/rest/v1/{TABLE}', params={'match_key':f'eq.{probe_key}'},
+            headers=_headers('return=minimal'), timeout=12
+        )
+        if not (200 <= delete.status_code < 300):
+            return {'ok': False, 'stage': 'cleanup', 'status': delete.status_code, 'message': 'Yazma başarılı; yalnız test satırı temizlenemedi.'}
+        return {'ok': True, 'stage': 'done', 'status': post.status_code, 'message': 'INSERT + geri okuma + DELETE başarılı. Supabase yazma yetkisi çalışıyor.'}
+    except Exception as exc:
+        return {'ok': False, 'stage': 'request', 'status': None, 'message': str(exc)[:400]}
