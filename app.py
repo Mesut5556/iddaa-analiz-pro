@@ -188,6 +188,53 @@ def prediction_model(completed, selected_match):
     }, None
 
 
+
+@st.cache_data(ttl=3600)
+def run_backtest(matches):
+    """
+    Walk-forward backtest:
+    each historical match is predicted using only earlier completed matches.
+    """
+    finished_all = matches[matches["finished"]].sort_values("datetime").copy()
+    rows = []
+
+    for _, target in finished_all.iterrows():
+        prior = finished_all[finished_all["datetime"] < target["datetime"]].copy()
+        pred, err = prediction_model(prior, target)
+        if err or pred is None:
+            continue
+
+        hg = int(target["home_goals"])
+        ag = int(target["away_goals"])
+        actual_1x2 = "1" if hg > ag else ("X" if hg == ag else "2")
+        predicted_1x2 = max(["1", "X", "2"], key=lambda k: pred[k])
+
+        actual_over15 = hg + ag >= 2
+        actual_over25 = hg + ag >= 3
+        actual_btts = hg > 0 and ag > 0
+
+        rows.append({
+            "Tarih": target["datetime"].strftime("%d.%m.%Y"),
+            "Ev": target["home"],
+            "Dep": target["away"],
+            "Skor": f"{hg}-{ag}",
+            "Gerçek 1X2": actual_1x2,
+            "Tahmin 1X2": predicted_1x2,
+            "1X2 Doğru": predicted_1x2 == actual_1x2,
+            "1X2 Güven": pred[predicted_1x2],
+            "1.5 Tahmin": pred["1.5 Üst"] >= 50,
+            "1.5 Gerçek": actual_over15,
+            "1.5 Doğru": (pred["1.5 Üst"] >= 50) == actual_over15,
+            "2.5 Tahmin": pred["2.5 Üst"] >= 50,
+            "2.5 Gerçek": actual_over25,
+            "2.5 Doğru": (pred["2.5 Üst"] >= 50) == actual_over25,
+            "KG Tahmin": pred["KG Var"] >= 50,
+            "KG Gerçek": actual_btts,
+            "KG Doğru": (pred["KG Var"] >= 50) == actual_btts,
+        })
+
+    return pd.DataFrame(rows)
+
 def prediction_table(pred):
     rows = [
         ["Maç Sonucu", "1", pred["1"]],
@@ -235,7 +282,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • İstatistik ve olasılık motoru • V1.3.2</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Tahmin motoru ve geriye dönük test • V1.4</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -247,7 +294,7 @@ with c1: stat_box("7 Günlük Maç",len(next7))
 with c2: stat_box("15 Günlük Maç",len(next15))
 with c3: stat_box("Oynanmış Maç",len(completed))
 
-menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","⚙️ Ayarlar"],horizontal=True)
+menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
 
 if menu == "🏠 Ana Sayfa":
     st.subheader("Önümüzdeki 15 Günün Maçları")
@@ -324,6 +371,61 @@ elif menu == "📊 Maç Analizi":
                 'Yüzdeler istatistiksel model tahminidir; garanti veya bahis tavsiyesi değildir.'
             )
 
+elif menu == "🧪 Backtest":
+    st.subheader("🧪 Model Backtest • V1.4")
+    st.caption(
+        "Her geçmiş maç, yalnızca o maçtan daha önce oynanmış karşılaşmalar kullanılarak yeniden tahmin edilir. "
+        "Bu test oran/kârlılık testi değil; modelin sonuç sınıflandırma isabetini ölçer."
+    )
+
+    bt = run_backtest(matches)
+
+    if bt.empty:
+        st.warning("Backtest için yeterli geçmiş veri oluşmadı.")
+    else:
+        total = len(bt)
+        acc_1x2 = round(100 * bt["1X2 Doğru"].mean(), 1)
+        acc_15 = round(100 * bt["1.5 Doğru"].mean(), 1)
+        acc_25 = round(100 * bt["2.5 Doğru"].mean(), 1)
+        acc_kg = round(100 * bt["KG Doğru"].mean(), 1)
+
+        b1,b2,b3,b4 = st.columns(4)
+        with b1: stat_box("Test Edilen Maç", total)
+        with b2: stat_box("1-X-2 İsabet", f"%{acc_1x2}")
+        with b3: stat_box("2.5 Alt/Üst İsabet", f"%{acc_25}")
+        with b4: stat_box("KG Var/Yok İsabet", f"%{acc_kg}")
+
+        st.markdown("### Pazar Bazında Sonuç")
+        summary = pd.DataFrame([
+            ["1-X-2", total, acc_1x2],
+            ["1.5 Alt/Üst", total, acc_15],
+            ["2.5 Alt/Üst", total, acc_25],
+            ["KG Var/Yok", total, acc_kg],
+        ], columns=["Pazar", "Test Maçı", "İsabet %"])
+        st.dataframe(summary, hide_index=True, use_container_width=True)
+
+        st.markdown("### Son Backtest Maçları")
+        recent_bt = bt.sort_index(ascending=False).head(20).copy()
+        recent_bt["1-X-2"] = recent_bt.apply(
+            lambda r: f'{r["Tahmin 1X2"]} {"✅" if r["1X2 Doğru"] else "❌"}', axis=1
+        )
+        recent_bt["2.5"] = recent_bt.apply(
+            lambda r: f'{"Üst" if r["2.5 Tahmin"] else "Alt"} {"✅" if r["2.5 Doğru"] else "❌"}', axis=1
+        )
+        recent_bt["KG"] = recent_bt.apply(
+            lambda r: f'{"Var" if r["KG Tahmin"] else "Yok"} {"✅" if r["KG Doğru"] else "❌"}', axis=1
+        )
+        st.dataframe(
+            recent_bt[["Tarih","Ev","Dep","Skor","1-X-2","2.5","KG"]],
+            hide_index=True,
+            use_container_width=True
+        )
+
+        st.info(
+            "Bu sonuçlar yalnızca mevcut sezonun sınırlı geçmiş verisiyle yapılan walk-forward testidir. "
+            "Kupon motoruna geçmeden önce özellikle örneklem büyüklüğü ve pazar bazındaki isabetleri değerlendireceğiz."
+        )
+
 else:
     st.subheader("Ayarlar")
     st.write("**Lig:** Türkiye Süper Lig")
@@ -336,4 +438,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.3.2 • Poisson tabanlı olasılık modeli • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.4 • Walk-forward backtest • Model tahminleri garanti değildir.")
