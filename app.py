@@ -505,6 +505,25 @@ def make_coupon(candidates, mode):
     return selected
 
 
+
+st.markdown("""
+<style>
+/* V1.8.1 contrast patch */
+.stApp, .stApp p, .stApp li, .stApp label { color:#F4F7FB; }
+.stApp h1, .stApp h2, .stApp h3 { color:#FFFFFF !important; }
+[data-testid="stCaptionContainer"] p { color:#C7D2E0 !important; }
+[data-testid="stMetricLabel"] p { color:#D9E2EC !important; }
+[data-testid="stMetricValue"] { color:#57E6A5 !important; }
+div[data-testid="stAlert"] p { color:#F5F7FA !important; }
+div[data-baseweb="input"] input {
+  color:#111827 !important;
+  background:#F8FAFC !important;
+  font-weight:700;
+}
+div[data-baseweb="input"] input::placeholder { color:#64748B !important; }
+</style>
+""", unsafe_allow_html=True)
+
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
 
 if menu == "🏠 Ana Sayfa":
@@ -650,7 +669,7 @@ elif menu == "🎟️ Kupon Merkezi":
         "V1.8 oran hesabı kullanıcı tarafından girilen değerlerle yapılır; otomatik oran ve kârlılık doğrulaması henüz yoktur."
     )
 
-    st.markdown("### 💹 V1.8 – Oran ve Value Hesaplayıcı")
+    st.markdown("### 💹 V1.8.1 – Oran ve Value Hesaplayıcı")
     st.caption(
         "İlk aşamada gerçek bahis oranını SEN giriyorsun. Otomatik oran sağlayıcısı henüz bağlanmadı; "
         "sistem oran uydurmaz. Girilen oranlar bu tarayıcı oturumunda tutulur, veritabanına kaydedilmez."
@@ -855,4 +874,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.8 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.8.1 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
