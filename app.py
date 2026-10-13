@@ -424,7 +424,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.2</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.3</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -510,7 +510,7 @@ def make_coupon(candidates, mode):
 
 st.markdown("""
 <style>
-/* V1.8.2 contrast patch */
+/* V1.8.3 contrast patch */
 .stApp, .stApp p, .stApp li, .stApp label { color:#F4F7FB; }
 .stApp h1, .stApp h2, .stApp h3 { color:#FFFFFF !important; }
 [data-testid="stCaptionContainer"] p { color:#C7D2E0 !important; }
@@ -527,34 +527,28 @@ div[data-baseweb="input"] input::placeholder { color:#64748B !important; }
 """, unsafe_allow_html=True)
 
 
-# API-FOOTBALL: provider odds are only accepted for a strictly matched fixture + market.
+# OddsPapi v4: key only in Streamlit Secrets; never display it.
 def api_key():
     try:
-        return str(st.secrets.get("API_FOOTBALL_KEY", "")).strip()
+        return str(st.secrets.get("ODDSPAPI_KEY", "")).strip()
     except Exception:
         return ""
 
-@st.cache_data(ttl=21600, show_spinner=False)
-def api_fixtures(day, key):
-    url = "https://v3.football.api-sports.io/fixtures?" + urllib.parse.urlencode({
-        "league": 203, "season": int(day[:4]) if int(day[5:7]) >= 7 else int(day[:4])-1,
-        "date": day, "timezone": "Europe/Istanbul"})
-    req = urllib.request.Request(url, headers={"x-apisports-key": key})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.load(resp)
-    if data.get("errors"):
-        raise ValueError(str(data["errors"]))
-    return data.get("response", [])
-
 @st.cache_data(ttl=3600, show_spinner=False)
-def api_odds(fixture_id, key):
-    url = "https://v3.football.api-sports.io/odds?fixture=" + str(fixture_id)
-    req = urllib.request.Request(url, headers={"x-apisports-key": key})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        data = json.load(resp)
-    if data.get("errors"):
-        raise ValueError(str(data["errors"]))
-    return data.get("response", [])
+def odds_papi_get(endpoint, params, key):
+    import urllib.error
+    query = urllib.parse.urlencode({**params, "apiKey": key})
+    req = urllib.request.Request("https://api.oddspapi.io/v4/" + endpoint + "?" + query,
+        headers={"Accept": "application/json", "User-Agent": "IddaaAnalizPro/1.8.3"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as exc:
+        # Do not leak API key in error messages or URLs.
+        raise ValueError(f"OddsPapi HTTP {exc.code} (erişim veya kota kısıtı olabilir)") from None
+    except urllib.error.URLError:
+        raise ValueError("OddsPapi sunucusuna erişilemedi") from None
+
 
 def team_token(value):
     value = unicodedata.normalize("NFKD", str(value).casefold().replace("ı", "i"))
@@ -563,41 +557,61 @@ def team_token(value):
         value = value.replace(term, "")
     return value
 
+
+def odds_papi_tournament(key):
+    rows = odds_papi_get("tournaments", {"sportId": 10, "language": "en"}, key)
+    if not isinstance(rows, list):
+        raise ValueError("Turnuva yanıtı beklenen biçimde değil")
+    matches = [r for r in rows if isinstance(r, dict)
+               and str(r.get("categorySlug", "")).lower() in ("turkey", "turkiye", "türkiye")
+               and (str(r.get("tournamentSlug", "")).lower() in ("super-lig", "superlig", "super-lig-turkey")
+                    or str(r.get("tournamentName", "")).lower() in ("super lig", "süper lig"))]
+    return matches[0].get("tournamentId") if len(matches) == 1 else None
+
+
 def find_exact_fixture(item, fixtures):
     try:
         home, away = str(item["Maç"]).split(" - ", 1)
         wanted = pd.Timestamp(item["Tarih"])
         matches = []
         for obj in fixtures:
-            teams = obj.get("teams", {})
-            if (team_token(teams.get("home", {}).get("name", "")) != team_token(home) or
-                team_token(teams.get("away", {}).get("name", "")) != team_token(away)):
+            if not isinstance(obj, dict) or obj.get("statusId") != 0:
                 continue
-            when = pd.Timestamp(obj["fixture"]["date"]).tz_convert("Europe/Istanbul").tz_localize(None)
+            if (team_token(obj.get("participant1Name", "")) != team_token(home) or
+                team_token(obj.get("participant2Name", "")) != team_token(away)):
+                continue
+            when = pd.Timestamp(obj["startTime"]).tz_convert("Europe/Istanbul").tz_localize(None)
             if abs((when - wanted).total_seconds()) <= 10800:
-                matches.append(obj["fixture"]["id"])
+                matches.append(obj.get("fixtureId"))
         return matches[0] if len(matches) == 1 else None
     except Exception:
         return None
 
-def extract_market_odds(odds_data, market):
-    wanted = "Over 1.5" if market == "1.5 Üst" else "Under 1.5"
+
+def extract_market_odds(data, market):
+    # OddsPapi bookmakerOutcomeId is a strict line+side, e.g. 1.5/over.
+    target = "1.5/over" if market == "1.5 Üst" else "1.5/under" if market == "1.5 Alt" else None
+    if not target or not isinstance(data, dict):
+        return None
     found = []
-    for event in odds_data:
-        for book in event.get("bookmakers", []):
-            for bet in book.get("bets", []):
-                label = str(bet.get("name", "")).casefold().replace(" ", "")
-                if label not in ("goalsover/under", "over/under", "totalgoals", "goals over/under".replace(" ", "")):
-                    continue
-                for value in bet.get("values", []):
-                    if str(value.get("value", "")).strip().casefold() == wanted.casefold():
-                        try:
-                            odd = float(value["odd"])
-                            if 1.01 <= odd <= 100:
-                                found.append((odd, book.get("name", "Bilinmiyor")))
-                        except (ValueError, TypeError, KeyError):
-                            pass
-    # Highest listed price is informational, not necessarily available to the user.
+    for bookmaker, book in data.get("bookmakerOdds", {}).items():
+        if not isinstance(book, dict) or book.get("suspended") or not book.get("bookmakerIsActive", False):
+            continue
+        for m in book.get("markets", {}).values():
+            if not isinstance(m, dict) or not m.get("marketActive", False):
+                continue
+            for outcome in m.get("outcomes", {}).values():
+                for player in outcome.get("players", {}).values():
+                    if not isinstance(player, dict) or not player.get("active", False):
+                        continue
+                    if str(player.get("bookmakerOutcomeId", "")).lower().strip() != target:
+                        continue
+                    try:
+                        odd = float(player["price"])
+                        if 1.01 <= odd <= 100:
+                            found.append((odd, bookmaker))
+                    except (ValueError, TypeError, KeyError):
+                        pass
     return max(found, key=lambda x: x[0]) if found else None
 
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
@@ -690,7 +704,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V1.8.2")
+    st.subheader("🎟️ Kupon Merkezi • V1.8.3")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -742,34 +756,44 @@ elif menu == "🎟️ Kupon Merkezi":
 
     st.warning(
         "Model olasılık üretir; garanti vermez. Backtest isabeti kârlılık değildir. "
-        "V1.8 oran hesabı kullanıcı tarafından girilen değerlerle yapılır; otomatik oran ve kârlılık doğrulaması henüz yoktur."
+        "Otomatik oran OddsPapi ile yalnızca doğrulanmış maç ve pazarlarda denenir; geçmiş kârlılık doğrulanmadı."
     )
 
-    st.markdown("### 💹 V1.8.2 – Otomatik Oran ve Value Hesaplayıcı")
-    st.caption("API-Football bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
+    st.markdown("### 💹 V1.8.3 – Otomatik Oran ve Value Hesaplayıcı")
+    st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
     key = api_key()
     if not key:
-        st.info("Otomatik oran için Streamlit Secrets içine API_FOOTBALL_KEY ekle. Şimdilik elle oran girebilirsin.")
+        st.info("Otomatik oran için Streamlit Secrets içine ODDSPAPI_KEY ekle. Şimdilik elle oran girebilirsin.")
     elif st.button("🔄 Güncel oranları sorgula (API kotası kullanır)", key="load_live_odds"):
         st.session_state["auto_odds"] = {}
         st.session_state["auto_status"] = {}
-        with st.spinner("Maç ve pazar eşleşmeleri kontrol ediliyor..."):
-            for _, item in coupon.iterrows():
-                item_key = f'{item["Maç"]}|{item["Pazar"]}'
-                try:
-                    day = pd.Timestamp(item["Tarih"]).strftime("%Y-%m-%d")
-                    fixture = find_exact_fixture(item, api_fixtures(day, key))
-                    if fixture is None:
-                        st.session_state["auto_status"][item_key] = "Maç eşleşmedi; oran bulunamadı."
-                        continue
-                    match_odd = extract_market_odds(api_odds(fixture, key), item["Pazar"])
-                    if match_odd:
-                        st.session_state["auto_odds"][item_key] = match_odd
-                        st.session_state["auto_status"][item_key] = "Oran bulundu"
-                    else:
-                        st.session_state["auto_status"][item_key] = "Bu maçta 1.5 gol pazarı bulunamadı."
-                except Exception as exc:
-                    st.session_state["auto_status"][item_key] = f"API hatası: {str(exc)[:110]}"
+        with st.spinner("OddsPapi Süper Lig ve maç eşleşmeleri kontrol ediliyor..."):
+            try:
+                tournament = odds_papi_tournament(key)
+                if tournament is None:
+                    st.warning("OddsPapi hesabında Türkiye Süper Lig turnuvası bulunamadı. Oran uydurulmadı.")
+                else:
+                    fixtures = odds_papi_get("fixtures", {"tournamentId": tournament, "statusId": 0, "language": "en"}, key)
+                    if not isinstance(fixtures, list):
+                        raise ValueError("Fikstür yanıtı beklenen biçimde değil")
+                    for _, item in coupon.iterrows():
+                        item_key = f'{item["Maç"]}|{item["Pazar"]}'
+                        fixture = find_exact_fixture(item, fixtures)
+                        if fixture is None:
+                            st.session_state["auto_status"][item_key] = "Maç/tarih tam eşleşmedi; oran bulunamadı."
+                            continue
+                        try:
+                            odds = odds_papi_get("odds", {"fixtureId": fixture, "oddsFormat": "decimal", "language": "en"}, key)
+                            match_odd = extract_market_odds(odds, item["Pazar"])
+                            if match_odd:
+                                st.session_state["auto_odds"][item_key] = match_odd
+                                st.session_state["auto_status"][item_key] = "Doğrulanmış 1.5 gol oranı bulundu"
+                            else:
+                                st.session_state["auto_status"][item_key] = "Aktif 1.5 gol oranı bulunamadı."
+                        except Exception as exc:
+                            st.session_state["auto_status"][item_key] = str(exc)[:110]
+            except Exception as exc:
+                st.error("OddsPapi bağlantısı: " + str(exc)[:130])
     if coupon.empty:
         st.info("Önce kupon için uygun maç bulunmalı.")
     else:
@@ -793,7 +817,7 @@ elif menu == "🎟️ Kupon Merkezi":
                 prob = float(item["Model %"]) / 100
                 value_rows.append({"Maç": item["Maç"], "Seçim": item["Pazar"],
                     "Model %": round(prob * 100, 1), "Oran": round(odd, 2),
-                    "Kaynak": "Elle" if manual >= 1.01 else "API-Football",
+                    "Kaynak": "Elle" if manual >= 1.01 else "OddsPapi",
                     "Adil oran*": round(1/prob, 2), "İma edilen %": round(100/odd, 1),
                     "Teorik EV %*": round(100*(prob*odd-1), 1)})
         if value_rows:
@@ -810,7 +834,7 @@ elif menu == "🎟️ Kupon Merkezi":
             else:
                 st.caption("Toplam oran için tüm seçimlerde gerçek oran bulunmalı.")
         else:
-            st.info("Oran bulunamadı. API anahtarını kontrol et veya gerçek oranı elle gir.")
+            st.info("Otomatik oran bulunamadı. OddsPapi erişimini kontrol et veya gerçek oranı elle gir.")
         st.warning("*Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
                    "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
@@ -966,4 +990,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.8.2 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.8.3 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
