@@ -1,4 +1,4 @@
-"""V3.9 persistent odds ledger. Supabase is primary; safe connection diagnostics included."""
+"""V3.9.1 persistent odds ledger. Supabase is primary; safe connection diagnostics included."""
 import json
 from pathlib import Path
 from datetime import datetime, timezone
