@@ -424,7 +424,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.4</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.5</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -510,7 +510,7 @@ def make_coupon(candidates, mode):
 
 st.markdown("""
 <style>
-/* V1.8.4 contrast patch */
+/* V1.8.5 contrast patch */
 .stApp, .stApp p, .stApp li, .stApp label { color:#F4F7FB; }
 .stApp h1, .stApp h2, .stApp h3 { color:#FFFFFF !important; }
 [data-testid="stCaptionContainer"] p { color:#C7D2E0 !important; }
@@ -539,7 +539,7 @@ def odds_papi_get(endpoint, params, key):
     import urllib.error
     query = urllib.parse.urlencode({**params, "apiKey": key})
     req = urllib.request.Request("https://api.oddspapi.io/v4/" + endpoint + "?" + query,
-        headers={"Accept": "application/json", "User-Agent": "IddaaAnalizPro/1.8.4"})
+        headers={"Accept": "application/json", "User-Agent": "IddaaAnalizPro/1.8.5"})
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
             return json.load(resp)
@@ -555,7 +555,8 @@ def team_token(value):
     value = "".join(c for c in value if not unicodedata.combining(c) and c.isalnum())
     for term in ("istanbul", "fk", "sk", "footballclub"):
         value = value.replace(term, "")
-    return value
+    aliases = {"basaksehir": "basaksehir", "istanbulbasaksehir": "basaksehir", "gaziantep": "gaziantep", "amed": "amedspor", "amedsk": "amedspor", "besiktas": "besiktas", "fenerbahce": "fenerbahce", "galatasaray": "galatasaray", "eyupspor": "eyupspor", "goztepe": "goztepe"}
+    return aliases.get(value, value)
 
 
 def odds_papi_tournament(key):
@@ -704,7 +705,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V1.8.4")
+    st.subheader("🎟️ Kupon Merkezi • V1.8.5")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -759,7 +760,7 @@ elif menu == "🎟️ Kupon Merkezi":
         "Otomatik oran OddsPapi ile yalnızca doğrulanmış maç ve pazarlarda denenir; geçmiş kârlılık doğrulanmadı."
     )
 
-    st.markdown("### 💹 V1.8.4 – Otomatik Oran ve Value Hesaplayıcı")
+    st.markdown("### 💹 V1.8.5 – Otomatik Oran ve Value Hesaplayıcı")
     st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
     key = api_key()
     if not key:
@@ -773,7 +774,17 @@ elif menu == "🎟️ Kupon Merkezi":
                 if tournament is None:
                     st.warning("OddsPapi hesabında Türkiye Süper Lig turnuvası bulunamadı. Oran uydurulmadı.")
                 else:
-                    fixtures = odds_papi_get("fixtures", {"tournamentId": tournament, "language": "en"}, key)
+                    # Limit to coupon dates: unbounded endpoint includes old seasons (2024+).
+                    if coupon.empty:
+                        st.info("Kuponda maç olmadığı için oran sorgulanmadı.")
+                        fixtures = []
+                    else:
+                        date_values = pd.to_datetime(coupon["Tarih"], dayfirst=True, errors="coerce").dropna()
+                        if date_values.empty:
+                            raise ValueError("Kupon maç tarihleri okunamadı")
+                        start = (date_values.min() - pd.Timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+                        end = (date_values.max() + pd.Timedelta(days=2)).strftime("%Y-%m-%dT00:00:00Z")
+                        fixtures = odds_papi_get("fixtures", {"tournamentId": tournament, "from": start, "to": end, "language": "en", "statusId": 0}, key)
                     if not isinstance(fixtures, list):
                         raise ValueError("Fikstür yanıtı beklenen biçimde değil")
                     st.session_state["odds_diag"] = {
@@ -788,12 +799,15 @@ elif menu == "🎟️ Kupon Merkezi":
                             for f in fixtures if isinstance(f, dict)
                         ][:80],
                     }
+                    st.session_state["odds_diag"]["aralik"] = f"{start} → {end}" if not coupon.empty else "Kupon boş"
+                    st.session_state["odds_diag"]["eslesme"] = []
                     for _, item in coupon.iterrows():
                         item_key = f'{item["Maç"]}|{item["Pazar"]}'
                         fixture = find_exact_fixture(item, fixtures)
                         if fixture is None:
-                            st.session_state["auto_status"][item_key] = "Maç/tarih tam eşleşmedi; oran bulunamadı."
+                            st.session_state["auto_status"][item_key] = "2026 tarih aralığında doğrulanmış maç bulunamadı; oran yok."
                             continue
+                        st.session_state["odds_diag"]["eslesme"].append(item["Maç"])
                         try:
                             odds = odds_papi_get("odds", {"fixtureId": fixture, "oddsFormat": "decimal", "language": "en"}, key)
                             match_odd = extract_market_odds(odds, item["Pazar"])
@@ -810,6 +824,8 @@ elif menu == "🎟️ Kupon Merkezi":
         with st.expander("🔎 OddsPapi tanılama – API gerçekten hangi maçları gönderiyor?", expanded=True):
             diag = st.session_state["odds_diag"]
             st.write(f"Türkiye turnuva ID: {diag['turnuva']} | API maç sayısı: {diag['mac_sayisi']}")
+            st.caption("Sorgu aralığı (UTC): " + diag.get("aralik", "—"))
+            st.caption("Eşleşen kupon maçları: " + (", ".join(diag.get("eslesme", [])) or "Henüz yok"))
             if diag["ornekler"]:
                 st.dataframe(pd.DataFrame(diag["ornekler"]), hide_index=True, use_container_width=True)
                 st.caption("Bu tabloda API anahtarı veya gizli bilgi bulunmaz. Ekran görüntüsünü paylaşabilirsin.")
@@ -1011,4 +1027,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.8.4 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.8.5 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
