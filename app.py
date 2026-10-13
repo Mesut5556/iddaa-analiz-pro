@@ -424,7 +424,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.5</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.6</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -510,7 +510,7 @@ def make_coupon(candidates, mode):
 
 st.markdown("""
 <style>
-/* V1.8.5 contrast patch */
+/* V1.8.6 contrast patch */
 .stApp, .stApp p, .stApp li, .stApp label { color:#F4F7FB; }
 .stApp h1, .stApp h2, .stApp h3 { color:#FFFFFF !important; }
 [data-testid="stCaptionContainer"] p { color:#C7D2E0 !important; }
@@ -594,7 +594,12 @@ def odds_papi_tournament(key):
 def find_exact_fixture(item, fixtures):
     try:
         home, away = str(item["Maç"]).split(" - ", 1)
+        # Coupon timestamps are Europe/Istanbul-aware; compare both sides in the same timezone.
         wanted = pd.Timestamp(item["Tarih"])
+        if wanted.tzinfo is None:
+            wanted = wanted.tz_localize("Europe/Istanbul")
+        else:
+            wanted = wanted.tz_convert("Europe/Istanbul")
         matches = []
         for obj in fixtures:
             if not isinstance(obj, dict) or str(obj.get("statusId", "0")) not in ("0", "1"):
@@ -602,7 +607,11 @@ def find_exact_fixture(item, fixtures):
             if (team_token(obj.get("participant1Name", "")) != team_token(home) or
                 team_token(obj.get("participant2Name", "")) != team_token(away)):
                 continue
-            when = pd.Timestamp(obj["startTime"]).tz_convert("Europe/Istanbul").tz_localize(None)
+            when = pd.Timestamp(obj["startTime"])
+            if when.tzinfo is None:
+                # OddsPapi startTime is UTC in this endpoint; make that explicit if offset is absent.
+                when = when.tz_localize("UTC")
+            when = when.tz_convert("Europe/Istanbul")
             if abs((when - wanted).total_seconds()) <= 10800:
                 matches.append(obj.get("fixtureId"))
         return matches[0] if len(matches) == 1 else None
@@ -726,7 +735,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V1.8.5")
+    st.subheader("🎟️ Kupon Merkezi • V1.8.6")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -781,7 +790,7 @@ elif menu == "🎟️ Kupon Merkezi":
         "Otomatik oran OddsPapi ile yalnızca doğrulanmış maç ve pazarlarda denenir; geçmiş kârlılık doğrulanmadı."
     )
 
-    st.markdown("### 💹 V1.8.5 – Otomatik Oran ve Value Hesaplayıcı")
+    st.markdown("### 💹 V1.8.6 – Otomatik Oran ve Value Hesaplayıcı")
     st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
     key = api_key()
     if not key:
@@ -1048,4 +1057,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.8.5 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.8.6 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
