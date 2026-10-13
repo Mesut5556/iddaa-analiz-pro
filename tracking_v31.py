@@ -1,9 +1,10 @@
-"""V3.1 - Oran kaydi ve deneme ROI modulu. Model kodundan bagimsizdir."""
+"""V3.5 - Oran kaydi ve deneme ROI modulu. Model kodundan bagimsizdir."""
 import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
+from storage_v35 import load_records, save_records
 
 TZ = ZoneInfo('Europe/Istanbul')
 FIELDS = ['id','tarih','mac','pazar','oran','kaynak','kayit_zamani','tutar']
@@ -14,7 +15,7 @@ def _key(date, match, market):
     return f'{d.isoformat()}|{match}|{market}'
 
 def _init():
-    if 'v31_records' not in st.session_state: st.session_state.v31_records = {}
+    load_records()
 
 def _rows():
     _init()
@@ -35,12 +36,13 @@ def _restore(upload):
         if row['id'] != expected: raise ValueError('CSV kayıt anahtarı uyuşmuyor.')
         parsed[expected] = {**row, 'oran':odd,'tutar':stake}
     st.session_state.v31_records.update(parsed)
+    save_records(st.session_state.v31_records)
     return len(parsed)
 
 def render(open_candidates, settled):
     _init()
-    st.markdown('## 💾 V3.1 • Maç öncesi oran defteri')
-    st.caption('Karar motoru değişmedi. Oran yalnızca maç başlamadan önce elle kaydedilir. API kotası kullanılmaz. Bu sürümde kayıtlar oturumda tutulur; CSV yedeğini indirip sonraki girişte geri yüklemelisin.')
+    st.markdown('## 💾 V3.5 • Maç öncesi oran defteri')
+    st.caption('Karar motoru değişmedi. Oran yalnızca maç başlamadan önce elle kaydedilir. API kotası kullanılmaz. Kayıtlar uygulamanın yerel defterine de yazılır; CSV yedeği taşınabilir güvenlik kopyasıdır.')
     uploaded = st.file_uploader('📤 Önceki oran defteri CSV dosyanı geri yükle', type=['csv'], key='v31_restore')
     if uploaded is not None and st.button('CSV kayıtlarını yükle', key='v31_restore_btn'):
         try:
@@ -72,7 +74,8 @@ def render(open_candidates, settled):
                 elif key in st.session_state.v31_records: st.warning('Bu seçimin oranı zaten kayıtlı; değiştirilmez.')
                 else:
                     st.session_state.v31_records[key] = dict(id=key, tarih=kickoff.isoformat(), mac=str(r['Maç']), pazar=str(r['Pazar']), oran=float(odd), kaynak=source.strip(), kayit_zamani=at.isoformat(), tutar=float(stake))
-                    st.success('Oran kilitlendi. Aşağıdaki CSV yedeğini hemen indir.')
+                    save_records(st.session_state.v31_records)
+                    st.success('Oran kilitlendi. Yerel deftere de yazıldı; CSV yedeğini yine sakla.')
         else:
             st.info('Yeni oran kaydedilecek başlamamış ve kayıtsız sinyal yok.')
     else:
@@ -111,4 +114,4 @@ def render(open_candidates, settled):
         c4.metric('Sanal ROI',f'%{100*pnl/wagered:+.1f}' if wagered else '—')
     else:
         st.info('Oranı kaydedilmiş maçlar sonuçlandığında sanal ROI burada hesaplanacak.')
-    st.warning('ÖNEMLİ: Streamlit Cloud oturumu kapanınca kayıtlar kaybolabilir. CSV yedeği zorunlu. Bu gerçek para yatırımı değildir; kâr garantisi yoktur. Kalıcı otomatik kayıt için ileride harici veritabanı gerekir.')
+    st.warning('ÖNEMLİ: Yerel defter sayfa geçişi/yenilemede kaydı korur; Streamlit Cloud yeniden başlatılır veya yeniden dağıtılırsa yerel dosya silinebilir. Bu yüzden CSV yedeğini sakla. Tam kalıcılık için sonraki adım harici veritabanıdır. Bu gerçek para yatırımı değildir; kâr garantisi yoktur.')
