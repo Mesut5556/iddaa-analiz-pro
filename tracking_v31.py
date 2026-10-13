@@ -1,10 +1,10 @@
-"""V3.8 - Kalıcı oran kaydı + açık Supabase hata tanısı."""
+"""V3.9 - Kalıcı oran kaydı + açık Supabase bağlantı testi."""
 import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
-from storage_v35 import load_records, save_records, cloud_status, settle_records
+from storage_v35 import load_records, save_records, cloud_status, settle_records, cloud_diagnostics
 
 TZ = ZoneInfo('Europe/Istanbul')
 FIELDS = ['id','tarih','mac','pazar','oran','kaynak','kayit_zamani','tutar']
@@ -41,10 +41,21 @@ def _restore(upload):
 
 def render(open_candidates, settled):
     _init()
-    st.markdown('## 💾 V3.8 • Maç öncesi oran defteri')
+    st.markdown('## 💾 V3.9 • Maç öncesi oran defteri')
     st.caption('Karar motoru değişmedi. Oran kayıtları Supabase kalıcı veritabanına yazılır; CSV ayrıca taşınabilir yedektir.')
     ok, msg = cloud_status()
     (st.success if ok else st.warning)(('☁️ ' if ok else '⚠️ ') + msg)
+    with st.expander('🧪 Supabase bağlantı testi', expanded=not ok):
+        d = cloud_diagnostics()
+        st.write('Project URL:', '✅ bulundu' if d['url_ok'] else '❌ bulunamadı')
+        st.write('Secret key:', '✅ bulundu' if d['key_found'] else '❌ bulunamadı')
+        st.write('Key türü:', d['key_type'])
+        if d['http_status'] is not None:
+            st.write('Data API HTTP:', d['http_status'])
+        if d['http_status'] is not None and 200 <= d['http_status'] < 300:
+            st.success(d['message'])
+        else:
+            st.error(d['message'])
     uploaded = st.file_uploader('📤 Önceki oran defteri CSV dosyanı geri yükle', type=['csv'], key='v31_restore')
     if uploaded is not None and st.button('CSV kayıtlarını yükle', key='v31_restore_btn'):
         try:
@@ -131,4 +142,4 @@ def render(open_candidates, settled):
         c4.metric('Sanal ROI',f'%{100*pnl/wagered:+.1f}' if wagered else '—')
     else:
         st.info('Oranı kaydedilmiş maçlar sonuçlandığında sanal ROI burada hesaplanacak.')
-    st.info('V3.8: Supabase bağlıysa kayıtlar deploy/restart sonrasında da korunur. CSV yedeği yine indirilebilir. Bu gerçek para yatırımı değildir; kâr garantisi yoktur.')
+    st.info('V3.9: Supabase bağlıysa kayıtlar deploy/restart sonrasında da korunur. CSV yedeği yine indirilebilir. Bu gerçek para yatırımı değildir; kâr garantisi yoktur.')

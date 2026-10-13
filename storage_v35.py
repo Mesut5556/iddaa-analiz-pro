@@ -1,4 +1,4 @@
-"""V3.8 persistent odds ledger. Supabase is primary; diagnostics are explicit and safe."""
+"""V3.9 persistent odds ledger. Supabase is primary; safe connection diagnostics included."""
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -194,3 +194,37 @@ def cloud_status():
     except Exception as exc:
         st.session_state['v37_cloud_ok'] = False
         return False, 'Supabase bağlantı hatası: ' + str(exc)[:180]
+
+
+
+def cloud_diagnostics():
+    """Safe diagnostics: never returns the key itself."""
+    url, key = _cfg()
+    out = {
+        'url_ok': url.startswith('https://'),
+        'key_found': bool(key),
+        'key_type': 'secret/service-role' if (key.startswith('sb_secret_') or key.startswith('eyJ')) else ('publishable/other' if key else 'missing'),
+        'http_status': None,
+        'message': '',
+    }
+    if not out['url_ok']:
+        out['message'] = 'SUPABASE_URL eksik veya https:// ile başlamıyor.'
+        return out
+    if not key:
+        out['message'] = 'Supabase Secret key bulunamadı.'
+        return out
+    try:
+        resp = requests.get(
+            f'{url}/rest/v1/{TABLE}',
+            params={'select':'id','limit':'1'},
+            headers=_headers(), timeout=12
+        )
+        out['http_status'] = resp.status_code
+        if 200 <= resp.status_code < 300:
+            out['message'] = 'BAŞARILI: Streamlit, Supabase tablosunu okuyabiliyor.'
+        else:
+            body = (resp.text or '').replace(key, '[GIZLI]')[:300]
+            out['message'] = f'HTTP {resp.status_code}: {body}'
+    except Exception as exc:
+        out['message'] = f'Bağlantı isteği başarısız: {str(exc)[:250]}'
+    return out
