@@ -539,7 +539,7 @@ def odds_papi_get(endpoint, params, key):
     import urllib.error
     query = urllib.parse.urlencode({**params, "apiKey": key})
     req = urllib.request.Request("https://api.oddspapi.io/v4/" + endpoint + "?" + query,
-        headers={"Accept": "application/json", "User-Agent": "IddaaAnalizPro/1.8.5"})
+        headers={"Accept": "application/json", "User-Agent": "IddaaAnalizPro/1.8.6"})
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
             return json.load(resp)
@@ -551,12 +551,33 @@ def odds_papi_get(endpoint, params, key):
 
 
 def team_token(value):
+    """Canonical club ID for fixture-source and OddsPapi naming variants."""
+    import re
     value = unicodedata.normalize("NFKD", str(value).casefold().replace("ı", "i"))
-    value = "".join(c for c in value if not unicodedata.combining(c) and c.isalnum())
-    for term in ("istanbul", "fk", "sk", "footballclub"):
-        value = value.replace(term, "")
-    aliases = {"basaksehir": "basaksehir", "istanbulbasaksehir": "basaksehir", "gaziantep": "gaziantep", "amed": "amedspor", "amedsk": "amedspor", "besiktas": "besiktas", "fenerbahce": "fenerbahce", "galatasaray": "galatasaray", "eyupspor": "eyupspor", "goztepe": "goztepe"}
-    return aliases.get(value, value)
+    value = "".join(c for c in value if not unicodedata.combining(c))
+    value = re.sub(r"[^a-z0-9]+", " ", value).strip()
+    # Exact aliases only: avoid accidental substring matches between clubs.
+    aliases = {
+        "fenerbahce": "fenerbahce", "fenerbahce istanbul": "fenerbahce",
+        "galatasaray": "galatasaray", "galatasaray istanbul": "galatasaray",
+        "besiktas": "besiktas", "besiktas istanbul": "besiktas",
+        "istanbul basaksehir": "basaksehir", "basaksehir": "basaksehir",
+        "gaziantep": "gaziantep", "gaziantep fk": "gaziantep",
+        "amedspor": "amedspor", "amed": "amedspor",
+        "amed sportif faaliyetler": "amedspor",
+        "corum": "corum", "corum fk": "corum", "corumspor": "corum",
+        "caykur rizespor": "rizespor", "rizespor": "rizespor",
+        "genclerbirligi": "genclerbirligi", "genclerbirligi sk": "genclerbirligi",
+        "erzurumspor": "erzurumspor", "erzurumspor fk": "erzurumspor",
+        "eyupspor": "eyupspor", "samsunspor": "samsunspor",
+        "trabzonspor": "trabzonspor", "alanyaspor": "alanyaspor",
+        "konyaspor": "konyaspor", "kasimpasa": "kasimpasa",
+        "kasimpasa istanbul": "kasimpasa", "goztepe": "goztepe",
+        "goztepe izmir": "goztepe", "kocaelispor": "kocaelispor",
+        "antalyaspor": "antalyaspor", "hatayspor": "hatayspor",
+        "hatayspor antakya": "hatayspor", "adana demirspor": "adanademirspor",
+    }
+    return aliases.get(value, value.replace(" ", ""))
 
 
 def odds_papi_tournament(key):
@@ -794,7 +815,7 @@ elif menu == "🎟️ Kupon Merkezi":
                             {"Tarih (UTC)": str(f.get("startTime", ""))[:16],
                              "Ev": f.get("participant1Name", ""),
                              "Deplasman": f.get("participant2Name", ""),
-                             "Oran var": f.get("hasOdds", ""),
+                             "Oran verisi işareti": f.get("hasOdds", ""),
                              "Durum": f.get("statusId", "")}
                             for f in fixtures if isinstance(f, dict)
                         ][:80],
@@ -815,7 +836,7 @@ elif menu == "🎟️ Kupon Merkezi":
                                 st.session_state["auto_odds"][item_key] = match_odd
                                 st.session_state["auto_status"][item_key] = "Doğrulanmış 1.5 gol oranı bulundu"
                             else:
-                                st.session_state["auto_status"][item_key] = "Aktif 1.5 gol oranı bulunamadı."
+                                st.session_state["auto_status"][item_key] = "Maç eşleşti ancak aktif 1.5 gol fiyatı bulunamadı (hasOdds diğer pazarları da kapsar)."
                         except Exception as exc:
                             st.session_state["auto_status"][item_key] = str(exc)[:110]
             except Exception as exc:
