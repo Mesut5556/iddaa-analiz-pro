@@ -424,7 +424,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.8.6</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.9</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -510,7 +510,7 @@ def make_coupon(candidates, mode):
 
 st.markdown("""
 <style>
-/* V1.8.6 contrast patch */
+/* V1.9 contrast patch */
 .stApp, .stApp p, .stApp li, .stApp label { color:#F4F7FB; }
 .stApp h1, .stApp h2, .stApp h3 { color:#FFFFFF !important; }
 [data-testid="stCaptionContainer"] p { color:#C7D2E0 !important; }
@@ -735,7 +735,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V1.8.6")
+    st.subheader("🎟️ Kupon Merkezi • V1.9")
     st.caption(
         "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
         "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
@@ -790,7 +790,7 @@ elif menu == "🎟️ Kupon Merkezi":
         "Otomatik oran OddsPapi ile yalnızca doğrulanmış maç ve pazarlarda denenir; geçmiş kârlılık doğrulanmadı."
     )
 
-    st.markdown("### 💹 V1.8.6 – Otomatik Oran ve Value Hesaplayıcı")
+    st.markdown("### 🎯 V1.9 – AL / PAS Value Karar Motoru")
     st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
     key = api_key()
     if not key:
@@ -882,13 +882,42 @@ elif menu == "🎟️ Kupon Merkezi":
                 st.warning("Oran en az 1,01 olmalı.")
             if odd >= 1.01:
                 prob = float(item["Model %"]) / 100
+                fair_odd = 1 / prob
+                implied = 1 / odd
+                edge_pp = (prob - implied) * 100
+                ev_pct = (prob * odd - 1) * 100
+
+                # V1.9 karar kuralı: yalnızca modelin zaten bağımsız testte
+                # doğrulanmış ana 1.5 pazarını değerlendir. Model yüzdesi kalibre
+                # edilmiş gerçek olasılık olmadığı için agresif eşikler kullanılır.
+                if item["Pazar"] not in ("1.5 Üst", "1.5 Alt"):
+                    decision, reason = "PAS", "Ana doğrulanmış 1.5 pazarı değil"
+                elif prob < 0.65:
+                    decision, reason = "PAS", "Model güveni %65 altında"
+                elif ev_pct >= 15 and edge_pp >= 7:
+                    decision, reason = "AL ADAYI", "EV ≥ %15 ve model-piyasa farkı ≥ 7 puan"
+                else:
+                    decision, reason = "PAS", "Value eşiği sağlanmadı"
+
                 value_rows.append({"Maç": item["Maç"], "Seçim": item["Pazar"],
                     "Model %": round(prob * 100, 1), "Oran": round(odd, 2),
                     "Kaynak": "Elle" if manual >= 1.01 else "OddsPapi",
-                    "Adil oran*": round(1/prob, 2), "İma edilen %": round(100/odd, 1),
-                    "Teorik EV %*": round(100*(prob*odd-1), 1)})
+                    "Adil oran*": round(fair_odd, 2), "Piyasa ima %": round(implied * 100, 1),
+                    "Fark (puan)*": round(edge_pp, 1), "Teorik EV %*": round(ev_pct, 1),
+                    "Karar*": decision, "Neden": reason})
         if value_rows:
-            st.dataframe(pd.DataFrame(value_rows), hide_index=True, use_container_width=True)
+            value_df = pd.DataFrame(value_rows)
+            st.markdown("#### 🎯 V1.9 kararları")
+            st.dataframe(value_df, hide_index=True, use_container_width=True)
+            al_count = int((value_df["Karar*"] == "AL ADAYI").sum())
+            pas_count = int((value_df["Karar*"] == "PAS").sum())
+            c1, c2 = st.columns(2)
+            c1.metric("AL adayı", al_count)
+            c2.metric("PAS", pas_count)
+            if al_count:
+                st.success("AL ADAYI = model ve mevcut oran V1.9 value eşiğini geçti. Bu bir bahis tavsiyesi veya kâr garantisi değildir.")
+            else:
+                st.info("Bu kuponda V1.9 value eşiğini geçen seçim yok: PAS.")
             if len(value_rows) == len(coupon):
                 combined_odds = 1.0
                 combined_prob = 1.0
@@ -902,7 +931,7 @@ elif menu == "🎟️ Kupon Merkezi":
                 st.caption("Toplam oran için tüm seçimlerde gerçek oran bulunmalı.")
         else:
             st.info("Otomatik oran bulunamadı. OddsPapi erişimini kontrol et veya gerçek oranı elle gir.")
-        st.warning("*Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
+        st.warning("*V1.9 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
                    "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
@@ -1057,4 +1086,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.8.6 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.9 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
