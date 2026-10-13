@@ -223,12 +223,15 @@ def run_backtest(matches):
             "1X2 Doğru": predicted_1x2 == actual_1x2,
             "1X2 Güven": pred[predicted_1x2],
             "1.5 Tahmin": pred["1.5 Üst"] >= 50,
+            "1.5 Güven": max(pred["1.5 Üst"], pred["1.5 Alt"]),
             "1.5 Gerçek": actual_over15,
             "1.5 Doğru": (pred["1.5 Üst"] >= 50) == actual_over15,
             "2.5 Tahmin": pred["2.5 Üst"] >= 50,
+            "2.5 Güven": max(pred["2.5 Üst"], pred["2.5 Alt"]),
             "2.5 Gerçek": actual_over25,
             "2.5 Doğru": (pred["2.5 Üst"] >= 50) == actual_over25,
             "KG Tahmin": pred["KG Var"] >= 50,
+            "KG Güven": max(pred["KG Var"], pred["KG Yok"]),
             "KG Gerçek": actual_btts,
             "KG Doğru": (pred["KG Var"] >= 50) == actual_btts,
         })
@@ -293,6 +296,22 @@ def select_signals(pred):
 
     return pd.DataFrame(signals, columns=["Pazar", "Model Seçimi", "Model %", "Durum"])
 
+
+def threshold_audit(bt, confidence_col, correct_col, thresholds=(50,55,60,65,70,75,80)):
+    rows = []
+    total = len(bt)
+    for threshold in thresholds:
+        sample = bt[bt[confidence_col] >= threshold]
+        n = len(sample)
+        if n:
+            accuracy = round(100 * sample[correct_col].mean(), 1)
+            coverage = round(100 * n / total, 1)
+        else:
+            accuracy = None
+            coverage = 0.0
+        rows.append([f"%{threshold}+", n, accuracy, coverage])
+    return pd.DataFrame(rows, columns=["Güven Eşiği", "Maç", "İsabet %", "Kapsama %"])
+
 def prediction_table(pred):
     rows = [
         ["Maç Sonucu", "1", pred["1"]],
@@ -340,7 +359,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Güven filtresi ve PAS sistemi • V1.4.1</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Güven eşiği denetimi • V1.4.2</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -442,7 +461,7 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🧪 Backtest":
-    st.subheader("🧪 Model Backtest • V1.4")
+    st.subheader("🧪 Model Backtest • V1.4.2")
     st.caption(
         "Her geçmiş maç, yalnızca o maçtan daha önce oynanmış karşılaşmalar kullanılarak yeniden tahmin edilir. "
         "Bu test oran/kârlılık testi değil; modelin sonuç sınıflandırma isabetini ölçer."
@@ -474,19 +493,44 @@ elif menu == "🧪 Backtest":
         ], columns=["Pazar", "Test Maçı", "İsabet %"])
         st.dataframe(summary, hide_index=True, use_container_width=True)
 
-        # Confidence-filter audit for 1-X-2: evaluate only predictions that would pass today's filter.
-        filtered = bt[(bt["1X2 Güven"] >= 48)].copy()
-        if not filtered.empty:
-            filtered_acc = round(100 * filtered["1X2 Doğru"].mean(), 1)
-            coverage = round(100 * len(filtered) / len(bt), 1)
-            st.markdown("### 🚦 Güven Filtresi Denetimi")
-            f1,f2 = st.columns(2)
-            with f1: stat_box("Filtreli 1-X-2 İsabet", f"%{filtered_acc}")
-            with f2: stat_box("Kapsama", f"%{coverage}")
-            st.caption(
-                f"Bu basit denetimde {len(filtered)}/{len(bt)} maç %48+ 1-X-2 güven eşiğini geçti. "
-                "Kapsama, modelin kaç maça seçim verdiğini gösterir. Bu eşik henüz optimize edilmiş değildir."
+        st.markdown("### 🎯 Güven Eşiği Analizi")
+        st.caption(
+            "Aşağıdaki tablolar, model güveni yükseldikçe isabetin gerçekten yükselip yükselmediğini gösterir. "
+            "Az maçlı satırlar yanıltıcı olabilir; Maç ve Kapsama sütunlarını birlikte değerlendir."
+        )
+
+        audit_market = st.radio(
+            "Pazar seç",
+            ["1-X-2", "1.5 Alt/Üst", "2.5 Alt/Üst", "KG Var/Yok"],
+            horizontal=True,
+            key="audit_market"
+        )
+        audit_map = {
+            "1-X-2": ("1X2 Güven", "1X2 Doğru"),
+            "1.5 Alt/Üst": ("1.5 Güven", "1.5 Doğru"),
+            "2.5 Alt/Üst": ("2.5 Güven", "2.5 Doğru"),
+            "KG Var/Yok": ("KG Güven", "KG Doğru"),
+        }
+        conf_col, correct_col = audit_map[audit_market]
+        audit_df = threshold_audit(bt, conf_col, correct_col)
+        st.dataframe(audit_df, hide_index=True, use_container_width=True)
+
+        usable = audit_df[(audit_df["Maç"] >= 5) & audit_df["İsabet %"].notna()].copy()
+        if not usable.empty:
+            # Prefer accuracy; on ties prefer more coverage.
+            best = usable.sort_values(["İsabet %", "Kapsama %"], ascending=False).iloc[0]
+            st.info(
+                f'Bu küçük örneklemde {audit_market} için en iyi görünen eşik '
+                f'{best["Güven Eşiği"]}: {int(best["Maç"])} maç, '
+                f'%{best["İsabet %"]} isabet, %{best["Kapsama %"]} kapsama.'
             )
+        else:
+            st.warning("Bu pazar/eşik için yorum yapmaya yetecek en az 5 maçlık örneklem yok.")
+
+        st.warning(
+            "Bu tablo eşik seçmek için keşif amaçlıdır. Aynı 25 maç üzerinde eşik seçip başarı ilan etmek "
+            "overfitting yaratabilir. Sonraki aşamada daha geniş veri ve ayrı doğrulama dönemi gerekir."
+        )
 
         st.markdown("### Son Backtest Maçları")
         recent_bt = bt.sort_index(ascending=False).head(20).copy()
@@ -522,4 +566,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.4.1 • Güven filtresi + PAS sistemi • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.4.2 • Güven eşiği analizi • Model tahminleri garanti değildir.")
