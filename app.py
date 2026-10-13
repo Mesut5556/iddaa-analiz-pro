@@ -104,6 +104,107 @@ def team_stats(history, team):
             "2.5 Üst %":round(100*overs/total,1),"KG Var %":round(100*btts/total,1)}
 
 
+
+def poisson_pmf(k, lam):
+    import math
+    return math.exp(-lam) * (lam ** k) / math.factorial(k)
+
+
+def prediction_model(completed, selected_match):
+    """Simple transparent Poisson model using only matches before kickoff."""
+    home = selected_match["home"]
+    away = selected_match["away"]
+    before = selected_match["datetime"]
+
+    league = completed[completed["datetime"] < before].copy()
+    if len(league) < 20:
+        return None, "Lig ortalaması için yeterli geçmiş maç yok."
+
+    league_home_avg = league["home_goals"].mean()
+    league_away_avg = league["away_goals"].mean()
+    if league_home_avg <= 0 or league_away_avg <= 0:
+        return None, "Gol ortalamaları hesaplanamadı."
+
+    # Up to 10 most recent relevant venue matches, all strictly before kickoff.
+    h = team_history(completed, home, before, 10, "home")
+    a = team_history(completed, away, before, 10, "away")
+    if len(h) < 2 or len(a) < 2:
+        return None, "Ev/deplasman modeli için en az 2'şer geçmiş maç gerekiyor."
+
+    h_for = h["home_goals"].mean()
+    h_against = h["away_goals"].mean()
+    a_for = a["away_goals"].mean()
+    a_against = a["home_goals"].mean()
+
+    # Shrink small samples toward league averages.
+    wh = min(len(h) / 8.0, 1.0)
+    wa = min(len(a) / 8.0, 1.0)
+    h_for = wh * h_for + (1-wh) * league_home_avg
+    h_against = wh * h_against + (1-wh) * league_away_avg
+    a_for = wa * a_for + (1-wa) * league_away_avg
+    a_against = wa * a_against + (1-wa) * league_home_avg
+
+    home_attack = h_for / league_home_avg
+    away_defence = a_against / league_home_avg
+    away_attack = a_for / league_away_avg
+    home_defence = h_against / league_away_avg
+
+    lam_home = max(0.20, min(4.0, league_home_avg * home_attack * away_defence))
+    lam_away = max(0.20, min(4.0, league_away_avg * away_attack * home_defence))
+
+    max_goals = 10
+    probs = {}
+    p1 = px = p2 = over15 = over25 = btts = 0.0
+    for hg in range(max_goals + 1):
+        for ag in range(max_goals + 1):
+            p = poisson_pmf(hg, lam_home) * poisson_pmf(ag, lam_away)
+            probs[(hg, ag)] = p
+            if hg > ag: p1 += p
+            elif hg == ag: px += p
+            else: p2 += p
+            if hg + ag >= 2: over15 += p
+            if hg + ag >= 3: over25 += p
+            if hg > 0 and ag > 0: btts += p
+
+    total = sum(probs.values())
+    if total <= 0:
+        return None, "Model olasılıkları hesaplanamadı."
+    # Normalize truncated 0..10 score grid.
+    p1, px, p2 = p1/total, px/total, p2/total
+    over15, over25, btts = over15/total, over25/total, btts/total
+
+    top_scores = sorted(probs.items(), key=lambda x: x[1], reverse=True)[:3]
+    top_scores = [(f"{s[0]}-{s[1]}", round(100*p/total,1)) for s,p in top_scores]
+
+    return {
+        "1": round(100*p1,1), "X": round(100*px,1), "2": round(100*p2,1),
+        "1X": round(100*(p1+px),1), "X2": round(100*(px+p2),1), "12": round(100*(p1+p2),1),
+        "1.5 Üst": round(100*over15,1), "1.5 Alt": round(100*(1-over15),1),
+        "2.5 Üst": round(100*over25,1), "2.5 Alt": round(100*(1-over25),1),
+        "KG Var": round(100*btts,1), "KG Yok": round(100*(1-btts),1),
+        "Ev gol beklentisi": round(lam_home,2), "Dep gol beklentisi": round(lam_away,2),
+        "Ev örneklem": len(h), "Dep örneklem": len(a), "Lig maç": len(league),
+        "Skorlar": top_scores
+    }, None
+
+
+def prediction_table(pred):
+    rows = [
+        ["Maç Sonucu", "1", pred["1"]],
+        ["Maç Sonucu", "X", pred["X"]],
+        ["Maç Sonucu", "2", pred["2"]],
+        ["Çifte Şans", "1X", pred["1X"]],
+        ["Çifte Şans", "X2", pred["X2"]],
+        ["Çifte Şans", "12", pred["12"]],
+        ["Gol", "1.5 Üst", pred["1.5 Üst"]],
+        ["Gol", "1.5 Alt", pred["1.5 Alt"]],
+        ["Gol", "2.5 Üst", pred["2.5 Üst"]],
+        ["Gol", "2.5 Alt", pred["2.5 Alt"]],
+        ["KG", "KG Var", pred["KG Var"]],
+        ["KG", "KG Yok", pred["KG Yok"]],
+    ]
+    return pd.DataFrame(rows, columns=["Pazar", "Seçenek", "Model %"])
+
 def display_history(df):
     if df.empty:
         st.info("Bu ölçüt için oynanmış maç bulunamadı.")
@@ -134,7 +235,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Gerçek fikstür ve takım istatistikleri • V1.3.1</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • İstatistik ve olasılık motoru • V1.3.2</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -170,7 +271,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("Takım Performansı • V1.3.1")
+    st.subheader("Maç Analizi • V1.3.2")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
@@ -200,7 +301,28 @@ elif menu == "📊 Maç Analizi":
                 st.caption(f"Bu satır yalnızca {vs['Maç']} maç üzerinden hesaplandı.")
             else:
                 st.info("Bu saha türünde geçmiş maç yok.")
-        st.info("🧠 1-X-2 ve gol olasılık tahminleri henüz aktif değil. Bu aşama yalnızca gerçekleşmiş maçların istatistiklerini gösterir.")
+        st.markdown("### 🧠 Model Olasılıkları")
+        pred, pred_error = prediction_model(completed, selected_match)
+        if pred_error:
+            st.warning(pred_error)
+        else:
+            m1,m2,m3 = st.columns(3)
+            with m1: stat_box("1 • Ev sahibi", f'%{pred["1"]}')
+            with m2: stat_box("X • Beraberlik", f'%{pred["X"]}')
+            with m3: stat_box("2 • Deplasman", f'%{pred["2"]}')
+            st.dataframe(prediction_table(pred), hide_index=True, use_container_width=True)
+            st.write(
+                f'**Beklenen gol:** {home} {pred["Ev gol beklentisi"]} • '
+                f'{away} {pred["Dep gol beklentisi"]}'
+            )
+            st.write("**En olası skorlar:** " + " • ".join(
+                f'{score} (%{prob})' for score,prob in pred["Skorlar"]
+            ))
+            st.caption(
+                f'Model yalnızca maçtan önceki verileri kullanır. Ev örneklemi: {pred["Ev örneklem"]}, '
+                f'deplasman örneklemi: {pred["Dep örneklem"]}, lig geçmişi: {pred["Lig maç"]} maç. '
+                'Yüzdeler istatistiksel model tahminidir; garanti veya bahis tavsiyesi değildir.'
+            )
 
 else:
     st.subheader("Ayarlar")
@@ -214,4 +336,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.3.1 • Gerçek maç istatistikleri • Gelecekteki sonuçlar garanti edilemez.")
+st.caption("İDDAA ANALİZ PRO V1.3.2 • Poisson tabanlı olasılık modeli • Model tahminleri garanti değildir.")
