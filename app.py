@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
+import urllib.request
+import json
 
 # -------------------------------------------------
 # SAYFA AYARLARI
@@ -101,27 +103,7 @@ st.markdown(
         margin-top: 7px;
     }
 
-    .coupon {
-        background: #10253c;
-        border: 1px solid rgba(255,255,255,0.10);
-        padding: 20px;
-        border-radius: 18px;
-        margin: 12px 0;
-    }
-
-    .low {
-        border-left: 5px solid #43e39d;
-    }
-
-    .medium {
-        border-left: 5px solid #ffbd45;
-    }
-
-    .high {
-        border-left: 5px solid #ff5b69;
-    }
-
-    .badge {
+    .live-badge {
         display: inline-block;
         background: rgba(67,227,157,0.14);
         color: #65f0b0;
@@ -136,10 +118,6 @@ st.markdown(
         min-height: 48px;
         border-radius: 14px;
         font-weight: 800;
-    }
-
-    div[data-baseweb="select"] > div {
-        border-radius: 14px;
     }
 
     @media (max-width: 700px) {
@@ -166,49 +144,139 @@ st.markdown(
 )
 
 # -------------------------------------------------
-# ÖRNEK VERİLER
-# Gerçek futbol verileri sonraki aşamada bağlanacak.
+# AYARLAR
 # -------------------------------------------------
-matches = pd.DataFrame(
-    [
-        {
-            "Lig": "Türkiye Süper Lig",
-            "Ev": "Galatasaray",
-            "Deplasman": "Trabzonspor",
-            "Tarih": "18 Ekim 2026",
-            "Saat": "20:00",
-            "Tahmin": "1.5 Üst",
-            "Olasılık": 74,
-        },
-        {
-            "Lig": "Türkiye Süper Lig",
-            "Ev": "Fenerbahçe",
-            "Deplasman": "Başakşehir",
-            "Tarih": "19 Ekim 2026",
-            "Saat": "20:00",
-            "Tahmin": "Ev Sahibi Kaybetmez",
-            "Olasılık": 71,
-        },
-        {
-            "Lig": "Türkiye Süper Lig",
-            "Ev": "Beşiktaş",
-            "Deplasman": "Konyaspor",
-            "Tarih": "20 Ekim 2026",
-            "Saat": "20:00",
-            "Tahmin": "1.5 Üst",
-            "Olasılık": 68,
-        },
-        {
-            "Lig": "İngiltere Premier Lig",
-            "Ev": "Arsenal",
-            "Deplasman": "Chelsea",
-            "Tarih": "21 Ekim 2026",
-            "Saat": "22:00",
-            "Tahmin": "Karşılıklı Gol",
-            "Olasılık": 66,
-        },
-    ]
+LEAGUE_ID = "4339"
+SEASON = "2026-2027"
+
+API_URL = (
+    "https://www.thesportsdb.com/api/v1/json/123/"
+    f"eventsseason.php?id={LEAGUE_ID}&s={SEASON}"
 )
+
+# -------------------------------------------------
+# API'DEN VERİ ÇEK
+# -------------------------------------------------
+@st.cache_data(ttl=1800)
+def get_super_lig_matches():
+    try:
+        request = urllib.request.Request(
+            API_URL,
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            }
+        )
+
+        with urllib.request.urlopen(request, timeout=15) as response:
+            data = json.loads(
+                response.read().decode("utf-8")
+            )
+
+        events = data.get("events")
+
+        if not events:
+            return pd.DataFrame(), "API maç verisi döndürmedi."
+
+        rows = []
+
+        for event in events:
+            date_text = event.get("dateEvent")
+            time_text = (
+                event.get("strTimeLocal")
+                or event.get("strTime")
+                or ""
+            )
+
+            try:
+                match_date = datetime.strptime(
+                    date_text,
+                    "%Y-%m-%d"
+                ).date()
+            except Exception:
+                continue
+
+            if time_text:
+                time_text = time_text[:5]
+            else:
+                time_text = "--:--"
+
+            home_score = event.get("intHomeScore")
+            away_score = event.get("intAwayScore")
+
+            if home_score is not None and away_score is not None:
+                score = f"{home_score} - {away_score}"
+            else:
+                score = "-"
+
+            rows.append(
+                {
+                    "id": event.get("idEvent", ""),
+                    "league": event.get(
+                        "strLeague",
+                        "Turkish Super Lig"
+                    ),
+                    "home": event.get(
+                        "strHomeTeam",
+                        "Bilinmiyor"
+                    ),
+                    "away": event.get(
+                        "strAwayTeam",
+                        "Bilinmiyor"
+                    ),
+                    "date": match_date,
+                    "time": time_text,
+                    "round": event.get("intRound", "-"),
+                    "status": event.get("strStatus", ""),
+                    "score": score,
+                    "home_badge": event.get(
+                        "strHomeTeamBadge",
+                        ""
+                    ),
+                    "away_badge": event.get(
+                        "strAwayTeamBadge",
+                        ""
+                    ),
+                }
+            )
+
+        df = pd.DataFrame(rows)
+
+        if df.empty:
+            return df, "Kullanılabilir maç bulunamadı."
+
+        df = df.sort_values(
+            by=["date", "time"]
+        ).reset_index(drop=True)
+
+        return df, None
+
+    except Exception as e:
+        return pd.DataFrame(), str(e)
+
+
+matches, api_error = get_super_lig_matches()
+
+today = datetime.now().date()
+end_date = today + timedelta(days=15)
+
+if not matches.empty:
+    upcoming = matches[
+        (matches["date"] >= today)
+        & (matches["date"] <= end_date)
+    ].copy()
+
+    future_all = matches[
+        matches["date"] >= today
+    ].copy()
+
+    past_matches = matches[
+        matches["date"] < today
+    ].copy()
+
+else:
+    upcoming = pd.DataFrame()
+    future_all = pd.DataFrame()
+    past_matches = pd.DataFrame()
 
 # -------------------------------------------------
 # ÜST BÖLÜM
@@ -216,14 +284,31 @@ matches = pd.DataFrame(
 st.markdown(
     """
     <div class="hero">
-        <div class="hero-title">⚽ İDDAA ANALİZ PRO</div>
+        <div class="hero-title">
+            ⚽ İDDAA ANALİZ PRO
+        </div>
+
         <div class="hero-sub">
-            Mobil uyumlu futbol analiz ve kupon merkezi • V1.1 Tasarım Sürümü
+            Gerçek futbol verisi • Türkiye Süper Lig • V1.2
         </div>
     </div>
     """,
     unsafe_allow_html=True,
 )
+
+# -------------------------------------------------
+# API DURUMU
+# -------------------------------------------------
+if api_error:
+    st.error(
+        "⚠️ Futbol verisi şu anda alınamadı.\n\n"
+        f"Teknik bilgi: {api_error}"
+    )
+else:
+    st.success(
+        "🟢 TheSportsDB bağlantısı aktif — "
+        "gerçek Süper Lig verisi alındı."
+    )
 
 # -------------------------------------------------
 # İSTATİSTİK KARTLARI
@@ -234,8 +319,12 @@ with c1:
     st.markdown(
         f"""
         <div class="stat-card">
-            <div class="stat-number">{len(matches)}</div>
-            <div class="stat-label">Örnek Maç</div>
+            <div class="stat-number">
+                {len(upcoming)}
+            </div>
+            <div class="stat-label">
+                Önümüzdeki 15 Gün
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -245,8 +334,12 @@ with c2:
     st.markdown(
         f"""
         <div class="stat-card">
-            <div class="stat-number">{matches["Lig"].nunique()}</div>
-            <div class="stat-label">Lig</div>
+            <div class="stat-number">
+                {len(matches)}
+            </div>
+            <div class="stat-label">
+                API'den Gelen Maç
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -256,8 +349,12 @@ with c3:
     st.markdown(
         """
         <div class="stat-card">
-            <div class="stat-number">V1.1</div>
-            <div class="stat-label">Sürüm</div>
+            <div class="stat-number">
+                V1.2
+            </div>
+            <div class="stat-label">
+                Gerçek Veri
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -266,11 +363,16 @@ with c3:
 st.write("")
 
 # -------------------------------------------------
-# ANA MENÜ
+# MENÜ
 # -------------------------------------------------
 menu = st.radio(
     "Bölüm seç",
-    ["🏠 Ana Sayfa", "🎟️ Kupon Merkezi", "📊 Maç Analizi", "⚙️ Ayarlar"],
+    [
+        "🏠 Ana Sayfa",
+        "📅 Fikstür",
+        "📊 Maç Analizi",
+        "⚙️ Ayarlar"
+    ],
     horizontal=True,
 )
 
@@ -279,88 +381,134 @@ menu = st.radio(
 # -------------------------------------------------
 if menu == "🏠 Ana Sayfa":
 
-    st.subheader("📅 Örnek Maçlar")
+    st.subheader("⚽ Yaklaşan Süper Lig Maçları")
 
-    st.info(
-        "Bu sürüm yalnızca tasarım ve kullanım testi içindir. "
-        "Aşağıdaki maçlar ve tahminler gerçek zamanlı veri değildir."
+    st.caption(
+        "Bugünden itibaren önümüzdeki 15 günlük "
+        "gerçek API verileri gösterilir."
     )
 
-    for _, row in matches.iterrows():
-        st.markdown(
-            f"""
-            <div class="match-card">
-                <div class="league">{row["Lig"]}</div>
-                <div class="teams">
-                    {row["Ev"]} ⚔️ {row["Deplasman"]}
+    if upcoming.empty:
+
+        if not future_all.empty:
+            st.info(
+                "Önümüzdeki 15 gün içinde API'de kayıtlı "
+                "Süper Lig maçı bulunamadı."
+            )
+
+            next_match = future_all.iloc[0]
+
+            st.write("### Sonraki kayıtlı maç")
+
+            st.markdown(
+                f"""
+                <div class="match-card">
+
+                    <div class="league">
+                        {next_match["league"]}
+                    </div>
+
+                    <div class="teams">
+                        {next_match["home"]}
+                        ⚔️
+                        {next_match["away"]}
+                    </div>
+
+                    <div class="info">
+                        📅 {next_match["date"].strftime("%d.%m.%Y")}
+                        &nbsp; • &nbsp;
+                        🕒 {next_match["time"]}
+                    </div>
+
                 </div>
-                <div class="info">
-                    📅 {row["Tarih"]} &nbsp; • &nbsp; 🕒 {row["Saat"]}
-                </div>
-                <div class="info">
-                    🎯 Örnek tahmin:
-                    <b>{row["Tahmin"]}</b>
-                    &nbsp; • &nbsp;
-                    Örnek olasılık:
-                    <b>%{row["Olasılık"]}</b>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
 
-# -------------------------------------------------
-# KUPON MERKEZİ
-# -------------------------------------------------
-elif menu == "🎟️ Kupon Merkezi":
-
-    st.subheader("🎟️ Kupon Merkezi")
-
-    risk = st.selectbox(
-        "Risk seviyesini seç",
-        ["🟢 Düşük Risk", "🟡 Orta Risk", "🔴 Yüksek Risk"],
-    )
-
-    if risk == "🟢 Düşük Risk":
-        st.markdown(
-            """
-            <div class="coupon low">
-                <span class="badge">DÜŞÜK RİSK</span>
-                <h3>Kupon A</h3>
-                <p>Galatasaray – Trabzonspor → 1.5 Üst</p>
-                <p>Fenerbahçe – Başakşehir → Ev Sahibi Kaybetmez</p>
-                <p><b>Not:</b> Bu kupon yalnızca arayüz testi için örnektir.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    elif risk == "🟡 Orta Risk":
-        st.markdown(
-            """
-            <div class="coupon medium">
-                <span class="badge">ORTA RİSK</span>
-                <h3>Kupon B</h3>
-                <p>Galatasaray – Trabzonspor → 2.5 Üst</p>
-                <p>Arsenal – Chelsea → Karşılıklı Gol</p>
-                <p><b>Not:</b> Bu kupon yalnızca arayüz testi için örnektir.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        else:
+            st.warning(
+                "API'de gelecekte oynanacak maç bulunamadı."
+            )
 
     else:
-        st.markdown(
-            """
-            <div class="coupon high">
-                <span class="badge">YÜKSEK RİSK</span>
-                <h3>Kupon C</h3>
-                <p>Beşiktaş – Konyaspor → Ev Sahibi Kazanır</p>
-                <p>Arsenal – Chelsea → 3.5 Üst</p>
-                <p><b>Not:</b> Bu kupon yalnızca arayüz testi için örnektir.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
+
+        for _, row in upcoming.iterrows():
+
+            st.markdown(
+                f"""
+                <div class="match-card">
+
+                    <div class="league">
+                        {row["league"]}
+                        • Hafta {row["round"]}
+                    </div>
+
+                    <div class="teams">
+                        {row["home"]}
+                        ⚔️
+                        {row["away"]}
+                    </div>
+
+                    <div class="info">
+                        📅 {row["date"].strftime("%d.%m.%Y")}
+                        &nbsp; • &nbsp;
+                        🕒 {row["time"]}
+                    </div>
+
+                    <div class="info">
+                        <span class="live-badge">
+                            GERÇEK VERİ
+                        </span>
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+# -------------------------------------------------
+# FİKSTÜR
+# -------------------------------------------------
+elif menu == "📅 Fikstür":
+
+    st.subheader("📅 Süper Lig Fikstürü")
+
+    if matches.empty:
+
+        st.warning("Gösterilecek maç bulunamadı.")
+
+    else:
+
+        display_df = matches.copy()
+
+        display_df["Tarih"] = display_df["date"].apply(
+            lambda x: x.strftime("%d.%m.%Y")
+        )
+
+        display_df = display_df[
+            [
+                "round",
+                "Tarih",
+                "time",
+                "home",
+                "away",
+                "score"
+            ]
+        ]
+
+        display_df.columns = [
+            "Hafta",
+            "Tarih",
+            "Saat",
+            "Ev Sahibi",
+            "Deplasman",
+            "Skor"
+        ]
+
+        st.dataframe(
+            display_df,
+            use_container_width=True,
+            hide_index=True
         )
 
 # -------------------------------------------------
@@ -370,52 +518,57 @@ elif menu == "📊 Maç Analizi":
 
     st.subheader("📊 Maç Analizi")
 
-    match_names = [
-        f'{row["Ev"]} - {row["Deplasman"]}'
-        for _, row in matches.iterrows()
-    ]
+    if future_all.empty:
 
-    selected = st.selectbox(
-        "İncelemek istediğin maçı seç",
-        match_names,
-    )
-
-    selected_index = match_names.index(selected)
-    row = matches.iloc[selected_index]
-
-    st.markdown(
-        f"""
-        <div class="match-card">
-            <div class="league">{row["Lig"]}</div>
-            <div class="teams">
-                {row["Ev"]} ⚔️ {row["Deplasman"]}
-            </div>
-            <div class="info">
-                📅 {row["Tarih"]} • 🕒 {row["Saat"]}
-            </div>
-            <hr>
-            <div class="info">
-                🎯 Örnek seçim: <b>{row["Tahmin"]}</b>
-            </div>
-            <div class="info">
-                📈 Örnek hesaplanan olasılık:
-                <b>%{row["Olasılık"]}</b>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.progress(int(row["Olasılık"]))
-
-    with st.expander("🔎 Bu tahmin neden seçildi?"):
-        st.write(
-            "Bu bölüm V1.1'de yalnızca tasarım testi amacıyla gösteriliyor."
+        st.info(
+            "Analiz edilecek gelecek maç bulunamadı."
         )
-        st.write(
-            "Gerçek veri aşamasında takım formu, gol ortalamaları, "
-            "iç saha/deplasman performansı ve diğer istatistikler "
-            "burada hesaplanacak."
+
+    else:
+
+        match_names = [
+            f'{row["home"]} - {row["away"]}'
+            for _, row in future_all.iterrows()
+        ]
+
+        selected = st.selectbox(
+            "Maç seç",
+            match_names
+        )
+
+        selected_index = match_names.index(selected)
+
+        row = future_all.iloc[selected_index]
+
+        st.markdown(
+            f"""
+            <div class="match-card">
+
+                <div class="league">
+                    {row["league"]}
+                    • Hafta {row["round"]}
+                </div>
+
+                <div class="teams">
+                    {row["home"]}
+                    ⚔️
+                    {row["away"]}
+                </div>
+
+                <div class="info">
+                    📅 {row["date"].strftime("%d.%m.%Y")}
+                    &nbsp; • &nbsp;
+                    🕒 {row["time"]}
+                </div>
+
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.info(
+            "🧠 İstatistiksel tahmin motoru henüz aktif değil. "
+            "Şu anda yalnızca gerçek maç verisini doğruluyoruz."
         )
 
 # -------------------------------------------------
@@ -425,11 +578,26 @@ else:
 
     st.subheader("⚙️ Ayarlar")
 
-    st.toggle("Mobil görünüm optimizasyonu", value=True)
-    st.toggle("Olasılık yüzdelerini göster", value=True)
-    st.toggle("Tahmin açıklamalarını göster", value=True)
+    st.write(
+        f"**Lig:** Türkiye Süper Lig"
+    )
 
-    st.success("V1.1 tasarım ayarları aktif.")
+    st.write(
+        f"**Sezon:** {SEASON}"
+    )
+
+    st.write(
+        f"**Lig ID:** {LEAGUE_ID}"
+    )
+
+    st.write(
+        "**Veri kaynağı:** TheSportsDB"
+    )
+
+    if st.button("🔄 Veriyi Yenile"):
+
+        st.cache_data.clear()
+        st.rerun()
 
 # -------------------------------------------------
 # ALT BİLGİ
@@ -438,7 +606,7 @@ st.write("")
 st.divider()
 
 st.caption(
-    f"İDDAA ANALİZ PRO V1.1 • "
-    f"{datetime.now().strftime('%d.%m.%Y')} • "
-    "Bu sürümde gerçek bahis tahmin motoru henüz aktif değildir."
+    "İDDAA ANALİZ PRO V1.2 • "
+    "Gerçek futbol verisi bağlantı testi • "
+    "Tahmin motoru henüz aktif değildir."
 )
