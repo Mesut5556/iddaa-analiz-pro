@@ -422,7 +422,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Çok sezonlu analiz ve backtest • V1.6</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V1.7</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -438,7 +438,74 @@ with c1: stat_box("7 Günlük Maç",len(next7))
 with c2: stat_box("15 Günlük Maç",len(next15))
 with c3: stat_box("Tüm Sezonlarda Oynanmış",len(completed))
 
-menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
+
+def build_coupon_candidates(upcoming, completed):
+    """
+    V1.7 coupon layer.
+    Primary validated market: 1.5 Alt/Üst.
+    Production floor: >=65% model confidence.
+    1-X-2 is secondary/experimental and only appears at >=75%.
+    2.5 and KG are excluded from automatic coupons for now.
+    """
+    rows = []
+    for _, match in upcoming.sort_values("datetime").iterrows():
+        pred, err = prediction_model(completed, match)
+        if pred is None:
+            continue
+
+        # Validated primary market.
+        if pred["1.5 Üst"] >= pred["1.5 Alt"]:
+            goal_pick, goal_prob = "1.5 Üst", pred["1.5 Üst"]
+        else:
+            goal_pick, goal_prob = "1.5 Alt", pred["1.5 Alt"]
+
+        if goal_prob >= 65:
+            rows.append({
+                "Tarih": match["datetime"],
+                "Maç": f'{match["home"]} - {match["away"]}',
+                "Pazar": goal_pick,
+                "Model %": float(goal_prob),
+                "Seviye": "ANA",
+                "Not": "Bağımsız testte doğrulanan 1.5 gol pazarı"
+            })
+
+        # Secondary high-confidence 1-X-2. Kept separate because validation sample was small.
+        one_x_two = {"1": pred["1"], "X": pred["X"], "2": pred["2"]}
+        ranked = sorted(one_x_two.items(), key=lambda x: x[1], reverse=True)
+        pick, prob = ranked[0]
+        margin = prob - ranked[1][1]
+        if prob >= 75 and margin >= 8:
+            rows.append({
+                "Tarih": match["datetime"],
+                "Maç": f'{match["home"]} - {match["away"]}',
+                "Pazar": pick,
+                "Model %": float(prob),
+                "Seviye": "DENEYSEL",
+                "Not": "1-X-2 yüksek güven; bağımsız örneklem hâlâ küçük"
+            })
+
+    if not rows:
+        return pd.DataFrame(columns=["Tarih","Maç","Pazar","Model %","Seviye","Not"])
+    return pd.DataFrame(rows).sort_values(["Model %","Tarih"], ascending=[False, True]).reset_index(drop=True)
+
+
+def make_coupon(candidates, mode):
+    primary = candidates[candidates["Seviye"] == "ANA"].copy()
+    if primary.empty:
+        return primary
+
+    if mode == "🛡️ Yüksek Olasılık":
+        threshold, legs = 75, 2
+    elif mode == "⚖️ Dengeli":
+        threshold, legs = 70, 3
+    else:
+        threshold, legs = 65, 4
+
+    selected = primary[primary["Model %"] >= threshold].head(legs).copy()
+    return selected
+
+
+menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
 
 if menu == "🏠 Ana Sayfa":
     st.subheader("Önümüzdeki 15 Günün Maçları")
@@ -462,7 +529,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("Maç Analizi • V1.6")
+    st.subheader("Maç Analizi • V1.7")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
@@ -527,8 +594,64 @@ elif menu == "📊 Maç Analizi":
                 "KG pazarı, V1.4 backtestinde zayıf kaldığı için daha sert eşikle ve deneysel statüde tutulur."
             )
 
+elif menu == "🎟️ Kupon Merkezi":
+    st.subheader("🎟️ Kupon Merkezi • V1.7")
+    st.caption(
+        "Motor yalnızca önümüzdeki 7 günün maçlarını tarar. Ana otomatik pazar 1.5 Alt/Üst'tür "
+        "ve en az %65 model güveni ister. 2.5 ve KG, doğrulama zayıf olduğu için otomatik kupona alınmaz."
+    )
+
+    candidates = build_coupon_candidates(next7, completed)
+
+    mode = st.radio(
+        "Kupon tipi",
+        ["🛡️ Yüksek Olasılık", "⚖️ Dengeli", "🔥 Yüksek Risk"],
+        horizontal=True
+    )
+    coupon = make_coupon(candidates, mode)
+
+    if mode == "🛡️ Yüksek Olasılık":
+        st.info("Kural: en az %75 güven • en fazla 2 seçim.")
+    elif mode == "⚖️ Dengeli":
+        st.info("Kural: en az %70 güven • en fazla 3 seçim.")
+    else:
+        st.info("Kural: en az %65 güven • en fazla 4 seçim. Daha fazla ayak toplam kupon riskini artırır.")
+
+    if coupon.empty:
+        st.warning("Bu hafta seçtiğin profil için yeterince güçlü doğrulanmış sinyal yok. Motor kuponu zorla doldurmadı: PAS.")
+    else:
+        st.markdown("### Bu Haftanın Otomatik Kuponu")
+        show = coupon.copy()
+        show["Tarih"] = show["Tarih"].dt.strftime("%d.%m.%Y %H:%M")
+        show["Model %"] = show["Model %"].map(lambda x: f"%{x:.1f}")
+        st.dataframe(show[["Tarih","Maç","Pazar","Model %"]], hide_index=True, use_container_width=True)
+
+        probs = coupon["Model %"].astype(float) / 100.0
+        combined = 100.0
+        for p in probs:
+            combined *= p
+        st.metric("Yaklaşık birleşik model olasılığı*", f"%{combined:.1f}")
+        st.caption(
+            "*Maçları bağımsız varsayan kaba çarpımdır; gerçek kupon kazanma olasılığı olarak garanti edilemez. "
+            "Oran/kârlılık modeli henüz eklenmedi."
+        )
+
+    st.markdown("### Uygun Sinyaller")
+    if candidates.empty:
+        st.write("Önümüzdeki 7 günde ≥%65 doğrulanmış 1.5 gol sinyali bulunamadı.")
+    else:
+        show_all = candidates.copy()
+        show_all["Tarih"] = show_all["Tarih"].dt.strftime("%d.%m.%Y %H:%M")
+        show_all["Model %"] = show_all["Model %"].map(lambda x: f"%{x:.1f}")
+        st.dataframe(show_all, hide_index=True, use_container_width=True)
+
+    st.warning(
+        "Model olasılık üretir; garanti vermez. Backtest isabeti kârlılık değildir. "
+        "Bahis oranları/value analizi V1.7'de henüz yoktur."
+    )
+
 elif menu == "🧪 Backtest":
-    st.subheader("🧪 Çok Sezonlu Backtest • V1.6")
+    st.subheader("🧪 Çok Sezonlu Backtest • V1.7")
     st.caption(
         "Her geçmiş maç, yalnızca o maçtan daha önce oynanmış karşılaşmalar kullanılarak yeniden tahmin edilir. "
         "Bu test oran/kârlılık testi değil; modelin sonuç sınıflandırma isabetini ölçer. "
@@ -678,4 +801,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.6 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.7 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
