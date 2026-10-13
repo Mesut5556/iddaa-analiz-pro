@@ -235,6 +235,64 @@ def run_backtest(matches):
 
     return pd.DataFrame(rows)
 
+
+def select_signals(pred):
+    """
+    Conservative signal layer.
+    It does not force a pick for every market. Weak/uncertain markets are PASS.
+    Thresholds are intentionally stricter than 50%.
+    """
+    signals = []
+
+    # 1-X-2: require a clear favorite and separation from second choice.
+    one_x_two = {"1": pred["1"], "X": pred["X"], "2": pred["2"]}
+    ranked = sorted(one_x_two.items(), key=lambda x: x[1], reverse=True)
+    best_name, best_prob = ranked[0]
+    margin = best_prob - ranked[1][1]
+    if best_prob >= 48 and margin >= 8:
+        signals.append(("1-X-2", best_name, best_prob, "UYGUN"))
+    else:
+        signals.append(("1-X-2", "PAS", best_prob, "ZAYIF"))
+
+    # Double chance: only surface strong coverage.
+    dc = {"1X": pred["1X"], "X2": pred["X2"], "12": pred["12"]}
+    dc_name, dc_prob = max(dc.items(), key=lambda x: x[1])
+    if dc_prob >= 72:
+        signals.append(("Çifte Şans", dc_name, dc_prob, "GÜÇLÜ"))
+    elif dc_prob >= 66:
+        signals.append(("Çifte Şans", dc_name, dc_prob, "UYGUN"))
+    else:
+        signals.append(("Çifte Şans", "PAS", dc_prob, "ZAYIF"))
+
+    # Goal markets: choose only if one side clears confidence threshold.
+    for market, over_key, alt_key in [
+        ("1.5 Gol", "1.5 Üst", "1.5 Alt"),
+        ("2.5 Gol", "2.5 Üst", "2.5 Alt"),
+    ]:
+        if pred[over_key] >= pred[alt_key]:
+            pick, prob = over_key, pred[over_key]
+        else:
+            pick, prob = alt_key, pred[alt_key]
+        if prob >= 70:
+            status = "GÜÇLÜ"
+        elif prob >= 62:
+            status = "UYGUN"
+        else:
+            pick, status = "PAS", "ZAYIF"
+        signals.append((market, pick, prob, status))
+
+    # KG deliberately requires a high threshold because V1.4 backtest was weak.
+    if pred["KG Var"] >= pred["KG Yok"]:
+        kg_pick, kg_prob = "KG Var", pred["KG Var"]
+    else:
+        kg_pick, kg_prob = "KG Yok", pred["KG Yok"]
+    if kg_prob >= 70:
+        signals.append(("KG", kg_pick, kg_prob, "DENEYSEL"))
+    else:
+        signals.append(("KG", "PAS", kg_prob, "KAPALI"))
+
+    return pd.DataFrame(signals, columns=["Pazar", "Model Seçimi", "Model %", "Durum"])
+
 def prediction_table(pred):
     rows = [
         ["Maç Sonucu", "1", pred["1"]],
@@ -282,7 +340,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Tahmin motoru ve geriye dönük test • V1.4</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Güven filtresi ve PAS sistemi • V1.4.1</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -318,7 +376,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("Maç Analizi • V1.3.2")
+    st.subheader("Maç Analizi • V1.4.1")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
@@ -370,6 +428,18 @@ elif menu == "📊 Maç Analizi":
                 f'deplasman örneklemi: {pred["Dep örneklem"]}, lig geçmişi: {pred["Lig maç"]} maç. '
                 'Yüzdeler istatistiksel model tahminidir; garanti veya bahis tavsiyesi değildir.'
             )
+            st.markdown("### 🚦 Güven Filtresi")
+            sig = select_signals(pred)
+            st.dataframe(sig, hide_index=True, use_container_width=True)
+            strong_count = int(sig["Durum"].isin(["GÜÇLÜ","UYGUN"]).sum())
+            if strong_count == 0:
+                st.warning("Bu maçta ana filtreler yeterince güçlü sinyal bulamadı: PAS.")
+            else:
+                st.success(f"Bu maçta {strong_count} pazar güven filtresini geçti.")
+            st.caption(
+                "PAS bir hata değildir. Amaç her maça seçim üretmek yerine zayıf sinyalleri elemek. "
+                "KG pazarı, V1.4 backtestinde zayıf kaldığı için daha sert eşikle ve deneysel statüde tutulur."
+            )
 
 elif menu == "🧪 Backtest":
     st.subheader("🧪 Model Backtest • V1.4")
@@ -403,6 +473,20 @@ elif menu == "🧪 Backtest":
             ["KG Var/Yok", total, acc_kg],
         ], columns=["Pazar", "Test Maçı", "İsabet %"])
         st.dataframe(summary, hide_index=True, use_container_width=True)
+
+        # Confidence-filter audit for 1-X-2: evaluate only predictions that would pass today's filter.
+        filtered = bt[(bt["1X2 Güven"] >= 48)].copy()
+        if not filtered.empty:
+            filtered_acc = round(100 * filtered["1X2 Doğru"].mean(), 1)
+            coverage = round(100 * len(filtered) / len(bt), 1)
+            st.markdown("### 🚦 Güven Filtresi Denetimi")
+            f1,f2 = st.columns(2)
+            with f1: stat_box("Filtreli 1-X-2 İsabet", f"%{filtered_acc}")
+            with f2: stat_box("Kapsama", f"%{coverage}")
+            st.caption(
+                f"Bu basit denetimde {len(filtered)}/{len(bt)} maç %48+ 1-X-2 güven eşiğini geçti. "
+                "Kapsama, modelin kaç maça seçim verdiğini gösterir. Bu eşik henüz optimize edilmiş değildir."
+            )
 
         st.markdown("### Son Backtest Maçları")
         recent_bt = bt.sort_index(ascending=False).head(20).copy()
@@ -438,4 +522,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.4 • Walk-forward backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.4.1 • Güven filtresi + PAS sistemi • Model tahminleri garanti değildir.")
