@@ -1,336 +1,444 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
 import urllib.request
 import json
 
-# -------------------------------------------------
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+# ==========================================
 # SAYFA AYARLARI
-# -------------------------------------------------
+# ==========================================
+
 st.set_page_config(
     page_title="İDDAA ANALİZ PRO",
     page_icon="⚽",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="collapsed"
 )
 
-# -------------------------------------------------
+# ==========================================
 # TASARIM
-# -------------------------------------------------
-st.markdown(
-    """
-    <style>
-    .stApp {
-        background: linear-gradient(180deg, #071426 0%, #0b1d33 100%);
-        color: white;
-    }
+# ==========================================
 
-    .block-container {
-        max-width: 1200px;
-        padding-top: 1.2rem;
-        padding-bottom: 3rem;
-    }
+st.markdown("""
+<style>
 
-    h1, h2, h3, p, label {
-        color: white !important;
-    }
+.stApp {
+    background: linear-gradient(
+        180deg,
+        #071426 0%,
+        #0b1d33 100%
+    );
+    color: white;
+}
 
-    .hero {
-        padding: 26px 22px;
-        border-radius: 22px;
-        background: linear-gradient(135deg, #102a43, #0b6b50);
-        margin-bottom: 18px;
-        border: 1px solid rgba(255,255,255,0.12);
-    }
+.block-container {
+    max-width: 1200px;
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+}
+
+h1, h2, h3 {
+    color: white !important;
+}
+
+.hero {
+    background: linear-gradient(
+        135deg,
+        #102a43,
+        #086b50
+    );
+    padding: 25px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+}
+
+.hero-title {
+    font-size: 32px;
+    font-weight: 900;
+    color: white;
+}
+
+.hero-sub {
+    color: #e0f2eb;
+    font-size: 15px;
+    margin-top: 8px;
+}
+
+.stat-card {
+    background: #10253c;
+    border-radius: 16px;
+    padding: 18px 10px;
+    text-align: center;
+    border: 1px solid #23405b;
+}
+
+.stat-number {
+    font-size: 28px;
+    font-weight: 900;
+    color: #43e39d;
+}
+
+.stat-label {
+    color: #d7e2ec;
+    font-size: 13px;
+}
+
+.match-card {
+    background: #10253c;
+    padding: 18px;
+    border-radius: 16px;
+    margin-bottom: 12px;
+    border: 1px solid #23405b;
+}
+
+.teams {
+    font-size: 19px;
+    font-weight: 800;
+    color: white;
+}
+
+.match-info {
+    color: #c9d5e0;
+    font-size: 14px;
+    margin-top: 9px;
+}
+
+.badge {
+    color: #43e39d;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+@media (max-width: 700px) {
 
     .hero-title {
-        font-size: 34px;
-        font-weight: 900;
-        margin: 0;
-    }
-
-    .hero-sub {
-        color: #d8e6f3;
-        font-size: 15px;
-        margin-top: 7px;
-    }
-
-    .stat-card {
-        background: #10253c;
-        border: 1px solid rgba(255,255,255,0.10);
-        padding: 18px;
-        border-radius: 18px;
-        text-align: center;
-        margin-bottom: 10px;
-    }
-
-    .stat-number {
-        color: #43e39d;
-        font-size: 27px;
-        font-weight: 900;
-    }
-
-    .stat-label {
-        color: #d7e2ec;
-        font-size: 13px;
-        margin-top: 4px;
-    }
-
-    .match-card {
-        background: #10253c;
-        border: 1px solid rgba(255,255,255,0.10);
-        padding: 18px;
-        border-radius: 18px;
-        margin: 10px 0;
-    }
-
-    .league {
-        color: #43e39d;
-        font-size: 12px;
-        font-weight: 800;
+        font-size: 26px;
     }
 
     .teams {
-        color: white;
-        font-size: 19px;
-        font-weight: 800;
-        margin-top: 6px;
+        font-size: 16px;
     }
 
-    .info {
-        color: #c9d5e0;
-        font-size: 13px;
-        margin-top: 7px;
+    .block-container {
+        padding-left: 12px;
+        padding-right: 12px;
     }
 
-    .live-badge {
-        display: inline-block;
-        background: rgba(67,227,157,0.14);
-        color: #65f0b0;
-        padding: 5px 10px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 800;
-    }
+}
 
-    div[data-testid="stButton"] button {
-        width: 100%;
-        min-height: 48px;
-        border-radius: 14px;
-        font-weight: 800;
-    }
+</style>
+""", unsafe_allow_html=True)
 
-    @media (max-width: 700px) {
-        .block-container {
-            padding-left: 0.8rem;
-            padding-right: 0.8rem;
-        }
-
-        .hero {
-            padding: 20px 16px;
-        }
-
-        .hero-title {
-            font-size: 27px;
-        }
-
-        .teams {
-            font-size: 17px;
-        }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# -------------------------------------------------
-# AYARLAR
-# -------------------------------------------------
-LEAGUE_ID = "4339"
-SEASON = "2026-2027"
+# ==========================================
+# VERI KAYNAGI
+# ==========================================
 
 API_URL = (
-    "https://www.thesportsdb.com/api/v1/json/123/"
-    f"eventsseason.php?id={LEAGUE_ID}&s={SEASON}"
+    "https://fixturedownload.azurewebsites.net"
+    "/feed/json/super-lig-2026"
 )
 
-# -------------------------------------------------
-# API'DEN VERİ ÇEK
-# -------------------------------------------------
-@st.cache_data(ttl=1800)
-def get_super_lig_matches():
-    try:
-        request = urllib.request.Request(
-            API_URL,
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            }
+TR_TIMEZONE = ZoneInfo("Europe/Istanbul")
+
+# ==========================================
+# GERCEK VERILERI CEK
+# ==========================================
+
+@st.cache_data(ttl=3600)
+def get_matches():
+
+    request = urllib.request.Request(
+        API_URL,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json"
+        }
+    )
+
+    with urllib.request.urlopen(
+        request,
+        timeout=20
+    ) as response:
+
+        raw_data = json.loads(
+            response.read().decode("utf-8")
         )
 
-        with urllib.request.urlopen(request, timeout=15) as response:
-            data = json.loads(
-                response.read().decode("utf-8")
+    if not isinstance(raw_data, list):
+        raise ValueError(
+            "Veri kaynagi beklenen listeyi dondurmedi."
+        )
+
+    rows = []
+
+    for event in raw_data:
+
+        date_text = event.get("DateUtc")
+
+        if not date_text:
+            continue
+
+        try:
+
+            utc_date = datetime.strptime(
+                date_text,
+                "%Y-%m-%d %H:%M:%SZ"
             )
 
-        events = data.get("events")
-
-        if not events:
-            return pd.DataFrame(), "API maç verisi döndürmedi."
-
-        rows = []
-
-        for event in events:
-            date_text = event.get("dateEvent")
-            time_text = (
-                event.get("strTimeLocal")
-                or event.get("strTime")
-                or ""
+            utc_date = utc_date.replace(
+                tzinfo=ZoneInfo("UTC")
             )
 
-            try:
-                match_date = datetime.strptime(
-                    date_text,
-                    "%Y-%m-%d"
-                ).date()
-            except Exception:
-                continue
-
-            if time_text:
-                time_text = time_text[:5]
-            else:
-                time_text = "--:--"
-
-            home_score = event.get("intHomeScore")
-            away_score = event.get("intAwayScore")
-
-            if home_score is not None and away_score is not None:
-                score = f"{home_score} - {away_score}"
-            else:
-                score = "-"
-
-            rows.append(
-                {
-                    "id": event.get("idEvent", ""),
-                    "league": event.get(
-                        "strLeague",
-                        "Turkish Super Lig"
-                    ),
-                    "home": event.get(
-                        "strHomeTeam",
-                        "Bilinmiyor"
-                    ),
-                    "away": event.get(
-                        "strAwayTeam",
-                        "Bilinmiyor"
-                    ),
-                    "date": match_date,
-                    "time": time_text,
-                    "round": event.get("intRound", "-"),
-                    "status": event.get("strStatus", ""),
-                    "score": score,
-                    "home_badge": event.get(
-                        "strHomeTeamBadge",
-                        ""
-                    ),
-                    "away_badge": event.get(
-                        "strAwayTeamBadge",
-                        ""
-                    ),
-                }
+            local_date = utc_date.astimezone(
+                TR_TIMEZONE
             )
 
-        df = pd.DataFrame(rows)
+        except (ValueError, TypeError):
+            continue
 
-        if df.empty:
-            return df, "Kullanılabilir maç bulunamadı."
+        home = event.get("HomeTeam")
+        away = event.get("AwayTeam")
 
-        df = df.sort_values(
-            by=["date", "time"]
-        ).reset_index(drop=True)
+        if not home or not away:
+            continue
 
-        return df, None
+        home_score = event.get("HomeTeamScore")
+        away_score = event.get("AwayTeamScore")
 
-    except Exception as e:
-        return pd.DataFrame(), str(e)
+        finished = (
+            home_score is not None
+            and away_score is not None
+        )
+
+        if finished:
+
+            score = (
+                f"{home_score} - {away_score}"
+            )
+
+        else:
+            score = "-"
+
+        rows.append({
+
+            "id": event.get("MatchNumber"),
+
+            "round": event.get(
+                "RoundNumber", "-"
+            ),
+
+            "home": home,
+
+            "away": away,
+
+            "datetime": local_date,
+
+            "date": local_date.date(),
+
+            "time": local_date.strftime("%H:%M"),
+
+            "score": score,
+
+            "finished": finished,
+
+            "location": event.get(
+                "Location", ""
+            )
+
+        })
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        raise ValueError(
+            "Kullanilabilir mac bulunamadi."
+        )
+
+    df = df.sort_values(
+        "datetime"
+    ).reset_index(drop=True)
+
+    return df
 
 
-matches, api_error = get_super_lig_matches()
+# ==========================================
+# VERIYI HAZIRLA
+# ==========================================
 
-today = datetime.now().date()
-end_date = today + timedelta(days=15)
+error_message = None
+
+try:
+
+    matches = get_matches()
+
+except Exception as error:
+
+    matches = pd.DataFrame()
+
+    error_message = str(error)
+
+
+now = datetime.now(TR_TIMEZONE)
+
+today = now.date()
 
 if not matches.empty:
-    upcoming = matches[
-        (matches["date"] >= today)
-        & (matches["date"] <= end_date)
+
+    future = matches[
+        (matches["datetime"] >= now)
+        & (~matches["finished"])
     ].copy()
 
-    future_all = matches[
-        matches["date"] >= today
+    next_7 = future[
+        future["date"] <= (
+            today + timedelta(days=7)
+        )
     ].copy()
 
-    past_matches = matches[
-        matches["date"] < today
+    next_15 = future[
+        future["date"] <= (
+            today + timedelta(days=15)
+        )
+    ].copy()
+
+    past = matches[
+        matches["finished"]
     ].copy()
 
 else:
-    upcoming = pd.DataFrame()
-    future_all = pd.DataFrame()
-    past_matches = pd.DataFrame()
 
-# -------------------------------------------------
-# ÜST BÖLÜM
-# -------------------------------------------------
+    future = pd.DataFrame()
+    next_7 = pd.DataFrame()
+    next_15 = pd.DataFrame()
+    past = pd.DataFrame()
+
+
+# ==========================================
+# MAC KARTI
+# ==========================================
+
+def show_match(row):
+
+    match_date = row["datetime"].strftime(
+        "%d.%m.%Y"
+    )
+
+    st.markdown(
+        f"""
+        <div class="match-card">
+
+            <div class="badge">
+                SÜPER LİG • HAFTA {row["round"]}
+            </div>
+
+            <div class="teams">
+                {row["home"]} ⚔️ {row["away"]}
+            </div>
+
+            <div class="match-info">
+                📅 {match_date}
+                &nbsp; • &nbsp;
+                🕒 {row["time"]}
+            </div>
+
+            <div class="match-info">
+                🏟️ {row["location"] or "Stadyum belirtilmedi"}
+            </div>
+
+            <div class="match-info">
+                Skor: {row["score"]}
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# ==========================================
+# UST BASLIK
+# ==========================================
+
 st.markdown(
     """
     <div class="hero">
         <div class="hero-title">
             ⚽ İDDAA ANALİZ PRO
         </div>
-
         <div class="hero-sub">
-            Gerçek futbol verisi • Türkiye Süper Lig • V1.2
+            Türkiye Süper Lig • Gerçek Fikstür
+            • V1.2.1
         </div>
     </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
-# -------------------------------------------------
-# API DURUMU
-# -------------------------------------------------
-if api_error:
+# ==========================================
+# BAGLANTI DURUMU
+# ==========================================
+
+if error_message:
+
     st.error(
-        "⚠️ Futbol verisi şu anda alınamadı.\n\n"
-        f"Teknik bilgi: {api_error}"
-    )
-else:
-    st.success(
-        "🟢 TheSportsDB bağlantısı aktif — "
-        "gerçek Süper Lig verisi alındı."
+        "🔴 Veri bağlantısı başarısız."
     )
 
-# -------------------------------------------------
-# İSTATİSTİK KARTLARI
-# -------------------------------------------------
+    st.caption(error_message)
+
+else:
+
+    st.success(
+        "🟢 Fikstür bağlantısı aktif!"
+    )
+
+    st.caption(
+        "Kaynak: Fixture Download • "
+        "Veriler genellikle günlük güncellenir."
+    )
+
+# ==========================================
+# ISTATISTIK KARTLARI
+# ==========================================
+
 c1, c2, c3 = st.columns(3)
 
 with c1:
+
     st.markdown(
         f"""
         <div class="stat-card">
             <div class="stat-number">
-                {len(upcoming)}
+                {len(next_7)}
             </div>
             <div class="stat-label">
-                Önümüzdeki 15 Gün
+                7 Günlük Maç
             </div>
         </div>
         """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
 with c2:
+
+    st.markdown(
+        f"""
+        <div class="stat-card">
+            <div class="stat-number">
+                {len(next_15)}
+            </div>
+            <div class="stat-label">
+                15 Günlük Maç
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+with c3:
+
     st.markdown(
         f"""
         <div class="stat-card">
@@ -338,33 +446,19 @@ with c2:
                 {len(matches)}
             </div>
             <div class="stat-label">
-                API'den Gelen Maç
+                Sezon Maçları
             </div>
         </div>
         """,
-        unsafe_allow_html=True,
-    )
-
-with c3:
-    st.markdown(
-        """
-        <div class="stat-card">
-            <div class="stat-number">
-                V1.2
-            </div>
-            <div class="stat-label">
-                Gerçek Veri
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
 st.write("")
 
-# -------------------------------------------------
-# MENÜ
-# -------------------------------------------------
+# ==========================================
+# MENU
+# ==========================================
+
 menu = st.radio(
     "Bölüm seç",
     [
@@ -373,116 +467,87 @@ menu = st.radio(
         "📊 Maç Analizi",
         "⚙️ Ayarlar"
     ],
-    horizontal=True,
+    horizontal=True
 )
 
-# -------------------------------------------------
+# ==========================================
 # ANA SAYFA
-# -------------------------------------------------
+# ==========================================
+
 if menu == "🏠 Ana Sayfa":
 
-    st.subheader("⚽ Yaklaşan Süper Lig Maçları")
-
-    st.caption(
-        "Bugünden itibaren önümüzdeki 15 günlük "
-        "gerçek API verileri gösterilir."
+    st.subheader(
+        "⚽ Önümüzdeki 15 Günün Maçları"
     )
 
-    if upcoming.empty:
+    if next_15.empty:
 
-        if not future_all.empty:
-            st.info(
-                "Önümüzdeki 15 gün içinde API'de kayıtlı "
-                "Süper Lig maçı bulunamadı."
-            )
-
-            next_match = future_all.iloc[0]
-
-            st.write("### Sonraki kayıtlı maç")
-
-            st.markdown(
-                f"""
-                <div class="match-card">
-
-                    <div class="league">
-                        {next_match["league"]}
-                    </div>
-
-                    <div class="teams">
-                        {next_match["home"]}
-                        ⚔️
-                        {next_match["away"]}
-                    </div>
-
-                    <div class="info">
-                        📅 {next_match["date"].strftime("%d.%m.%Y")}
-                        &nbsp; • &nbsp;
-                        🕒 {next_match["time"]}
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        else:
-            st.warning(
-                "API'de gelecekte oynanacak maç bulunamadı."
-            )
+        st.warning(
+            "Önümüzdeki 15 gün için "
+            "kayıtlı maç bulunamadı."
+        )
 
     else:
 
-        for _, row in upcoming.iterrows():
+        for _, row in next_15.iterrows():
 
-            st.markdown(
-                f"""
-                <div class="match-card">
+            show_match(row)
 
-                    <div class="league">
-                        {row["league"]}
-                        • Hafta {row["round"]}
-                    </div>
+# ==========================================
+# FIKSTUR
+# ==========================================
 
-                    <div class="teams">
-                        {row["home"]}
-                        ⚔️
-                        {row["away"]}
-                    </div>
-
-                    <div class="info">
-                        📅 {row["date"].strftime("%d.%m.%Y")}
-                        &nbsp; • &nbsp;
-                        🕒 {row["time"]}
-                    </div>
-
-                    <div class="info">
-                        <span class="live-badge">
-                            GERÇEK VERİ
-                        </span>
-                    </div>
-
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-# -------------------------------------------------
-# FİKSTÜR
-# -------------------------------------------------
 elif menu == "📅 Fikstür":
 
-    st.subheader("📅 Süper Lig Fikstürü")
+    st.subheader(
+        "📅 Türkiye Süper Lig Fikstürü"
+    )
 
-    if matches.empty:
+    fixture_type = st.selectbox(
+        "Gösterilecek maçlar",
+        [
+            "Önümüzdeki 7 Gün",
+            "Önümüzdeki 15 Gün",
+            "Tüm Gelecek Maçlar",
+            "Geçmiş Maçlar",
+            "Tüm Sezon"
+        ]
+    )
 
-        st.warning("Gösterilecek maç bulunamadı.")
+    if fixture_type == "Önümüzdeki 7 Gün":
+
+        selected_df = next_7
+
+    elif fixture_type == "Önümüzdeki 15 Gün":
+
+        selected_df = next_15
+
+    elif fixture_type == "Tüm Gelecek Maçlar":
+
+        selected_df = future
+
+    elif fixture_type == "Geçmiş Maçlar":
+
+        selected_df = past
 
     else:
 
-        display_df = matches.copy()
+        selected_df = matches
 
-        display_df["Tarih"] = display_df["date"].apply(
-            lambda x: x.strftime("%d.%m.%Y")
+    if selected_df.empty:
+
+        st.info(
+            "Bu bölümde gösterilecek maç yok."
+        )
+
+    else:
+
+        display_df = selected_df.copy()
+
+        display_df["Tarih"] = (
+            display_df["datetime"].dt.strftime(
+                "%d.%m.%Y"
+            )
         )
 
         display_df = display_df[
@@ -511,102 +576,100 @@ elif menu == "📅 Fikstür":
             hide_index=True
         )
 
-# -------------------------------------------------
-# MAÇ ANALİZİ
-# -------------------------------------------------
+# ==========================================
+# MAC ANALIZI
+# ==========================================
+
 elif menu == "📊 Maç Analizi":
 
-    st.subheader("📊 Maç Analizi")
+    st.subheader(
+        "📊 Maç Analizi"
+    )
 
-    if future_all.empty:
+    if future.empty:
 
-        st.info(
-            "Analiz edilecek gelecek maç bulunamadı."
+        st.warning(
+            "Analiz edilecek gelecek maç yok."
         )
 
     else:
 
-        match_names = [
-            f'{row["home"]} - {row["away"]}'
-            for _, row in future_all.iterrows()
-        ]
+        options = {
+
+            str(row["id"]) + " | "
+            + row["home"] + " - " + row["away"]
+            + " | "
+            + row["datetime"].strftime("%d.%m.%Y"):
+
+            index
+
+            for index, row in future.iterrows()
+
+        }
 
         selected = st.selectbox(
-            "Maç seç",
-            match_names
+            "Analiz edilecek maçı seç",
+            list(options.keys())
         )
 
-        selected_index = match_names.index(selected)
+        row = future.loc[
+            options[selected]
+        ]
 
-        row = future_all.iloc[selected_index]
-
-        st.markdown(
-            f"""
-            <div class="match-card">
-
-                <div class="league">
-                    {row["league"]}
-                    • Hafta {row["round"]}
-                </div>
-
-                <div class="teams">
-                    {row["home"]}
-                    ⚔️
-                    {row["away"]}
-                </div>
-
-                <div class="info">
-                    📅 {row["date"].strftime("%d.%m.%Y")}
-                    &nbsp; • &nbsp;
-                    🕒 {row["time"]}
-                </div>
-
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        show_match(row)
 
         st.info(
-            "🧠 İstatistiksel tahmin motoru henüz aktif değil. "
-            "Şu anda yalnızca gerçek maç verisini doğruluyoruz."
+            "🧠 İstatistiksel tahmin motoru "
+            "sonraki aşamada eklenecek."
         )
 
-# -------------------------------------------------
+        st.write(
+            "Bu aşamada gerçek maç bilgilerini "
+            "ve tarihlerini doğruluyoruz."
+        )
+
+# ==========================================
 # AYARLAR
-# -------------------------------------------------
+# ==========================================
+
 else:
 
     st.subheader("⚙️ Ayarlar")
 
     st.write(
-        f"**Lig:** Türkiye Süper Lig"
+        "**Lig:** Türkiye Süper Lig"
     )
 
     st.write(
-        f"**Sezon:** {SEASON}"
+        "**Sezon:** 2026–2027"
     )
 
     st.write(
-        f"**Lig ID:** {LEAGUE_ID}"
+        "**Veri kaynağı:** Fixture Download"
     )
 
     st.write(
-        "**Veri kaynağı:** TheSportsDB"
+        "**Saat dilimi:** Türkiye"
     )
 
-    if st.button("🔄 Veriyi Yenile"):
+    st.write(
+        "**Otomatik önbellek yenileme:** 60 dakika"
+    )
+
+    if st.button("🔄 Verileri Yenile"):
 
         st.cache_data.clear()
+
         st.rerun()
 
-# -------------------------------------------------
-# ALT BİLGİ
-# -------------------------------------------------
-st.write("")
+# ==========================================
+# ALT BILGI
+# ==========================================
+
 st.divider()
 
 st.caption(
-    "İDDAA ANALİZ PRO V1.2 • "
-    "Gerçek futbol verisi bağlantı testi • "
+    "İDDAA ANALİZ PRO V1.2.1 • "
+    "Gerçek fikstür ve maç sonuçları • "
     "Tahmin motoru henüz aktif değildir."
 )
