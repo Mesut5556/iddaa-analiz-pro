@@ -1,4 +1,4 @@
-"""V3.6: verified OddsPapi double-chance odds -> pre-match locked tracking ledger."""
+"""V3.7: verified OddsPapi double-chance odds -> pre-match locked tracking ledger."""
 import pandas as pd
 import streamlit as st
 from storage_v35 import load_records, save_records
@@ -48,7 +48,7 @@ def _fetch_one(row, dc, fixtures, api_key, odds_papi_get, find_exact_fixture):
         return None, 'Maç başlamış.'
     selection = str(row['Pazar'])
     if selection not in ('1X', 'X2'):
-        return None, 'V3.6 otomatik kayıt şu an yalnızca 1X/X2 için açık.'
+        return None, 'V3.7 otomatik kayıt şu an yalnızca 1X/X2 için açık.'
     fid = find_exact_fixture(row, fixtures)
     if not fid:
         return None, 'Takım/saat kesin eşleşmedi.'
@@ -74,7 +74,7 @@ def _lock(row, found, stake=100.0):
         return False, 'Maç başlamış.'
     st.session_state.v31_records[key] = dict(
         id=key, tarih=kickoff.isoformat(), mac=str(row['Maç']), pazar=str(row['Pazar']),
-        oran=float(q['Oran']), kaynak=str(q['Kaynak']), kayit_zamani=now.isoformat(), tutar=float(stake)
+        oran=float(q['Oran']), kaynak=str(q['Kaynak']), kayit_zamani=now.isoformat(), tutar=float(stake), model_pct=float(row.get('Model %', 0) or 0), backtest_pct=float(row.get('Backtest %', 0) or 0)
     )
     save_records(st.session_state.v31_records)
     return True, f"{q['Oran']:.2f} • {q['Kaynak']}"
@@ -82,7 +82,7 @@ def _lock(row, found, stake=100.0):
 
 def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_fixture):
     _ensure_store()
-    st.markdown('### 🤖 V3.6 • Otomatik oran kilitleme')
+    st.markdown('### 🤖 V3.7 • Otomatik oran kilitleme')
     st.caption('Doğrulanmış 90 dakika Çifte Şans oranını OddsPapi’den maç başlamadan alır ve oran defterine kilitler. Aynı seçim sonradan değiştirilmez. API kotası kullanılır.')
     if not api_key:
         st.warning('ODDSPAPI_KEY Streamlit Secrets içinde bulunamadı.')
@@ -129,8 +129,8 @@ def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_
                 report.append({'Maç': row['Maç'], 'Seçim': row['Pazar'], 'Durum': 'KİLİTLENDİ' if ok else 'KAYDEDİLMEDİ', 'Oran/Kaynak': msg})
         st.dataframe(pd.DataFrame(report), hide_index=True, use_container_width=True)
         if any(r['Durum']=='KİLİTLENDİ' for r in report):
-            st.success('Maç öncesi oran defterine kilitlendi. Aşağıdaki CSV yedeğini indirerek kaydı koru.')
+            st.success('Maç öncesi oran defterine kilitlendi. Kayıt Supabase’e kalıcı olarak yazıldı; CSV ayrıca yedek olarak indirilebilir.')
         if any(r['Durum']=='KAYDEDİLMEDİ' for r in report):
             st.warning('Bazı seçimler güvenli eşleşme/fiyat bulunamadığı için kaydedilmedi; oran uydurulmadı.')
     except Exception as exc:
-        st.error('V3.6 otomatik oran hatası: ' + str(exc)[:180])
+        st.error('V3.7 otomatik oran hatası: ' + str(exc)[:180])
