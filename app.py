@@ -25,41 +25,78 @@ h1,h2,h3 {color:#fff!important}
 @media(max-width:700px){.hero-title{font-size:24px}.block-container{padding-left:12px;padding-right:12px}}
 </style>""", unsafe_allow_html=True)
 
-API_URL = "https://fixturedownload.azurewebsites.net/feed/json/super-lig-2026"
+BASE_URL = "https://fixturedownload.azurewebsites.net/feed/json/super-lig-{}"
+SEASONS = [2023, 2024, 2025, 2026]
+TEAM_ALIASES = {
+    "besiktas": "Besiktas", "beşiktaş": "Besiktas",
+    "istanbul basaksehir": "Istanbul Basaksehir", "istanbul başakşehir": "Istanbul Basaksehir",
+    "basaksehir": "Istanbul Basaksehir", "başakşehir": "Istanbul Basaksehir",
+    "gaziantep fk": "Gaziantep", "gaziantep f.k.": "Gaziantep",
+    "gaziantep f.k": "Gaziantep", "gaziantep": "Gaziantep",
+    "rizespor": "Çaykur Rizespor", "caykur rizespor": "Çaykur Rizespor",
+    "çaykur rizespor": "Çaykur Rizespor",
+    "kasimpasa": "Kasimpasa", "kasımpaşa": "Kasimpasa",
+    "genclerbirligi": "Gençlerbirliği", "gençlerbirliği": "Gençlerbirliği",
+    "eyupspor": "Eyüpspor", "eyüpspor": "Eyüpspor",
+    "amed": "Amedspor", "amedspor": "Amedspor",
+    "corum": "Çorum", "çorum": "Çorum", "çorum fk": "Çorum",
+    "erzurumspor fk": "Erzurumspor", "erzurumspor": "Erzurumspor",
+    "samsunspor": "Samsunspor",
+    "fenerbahce": "Fenerbahçe", "fenerbahçe": "Fenerbahçe",
+    "galatasaray": "Galatasaray",
+}
+
+def normalize_team(name):
+    name = str(name).strip()
+    return TEAM_ALIASES.get(name.casefold(), name)
 TR_TZ = ZoneInfo("Europe/Istanbul")
 UTC_TZ = ZoneInfo("UTC")
 
 @st.cache_data(ttl=3600)
 def get_matches():
-    req = urllib.request.Request(API_URL, headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=20) as response:
-        data = json.loads(response.read().decode("utf-8"))
-    if not isinstance(data, list):
-        raise ValueError("Beklenmeyen veri biçimi.")
     rows = []
-    for item in data:
+    failures = []
+    for season in SEASONS:
+        url = BASE_URL.format(season)
         try:
-            dt_utc = datetime.strptime(item["DateUtc"], "%Y-%m-%d %H:%M:%SZ").replace(tzinfo=UTC_TZ)
-            dt = dt_utc.astimezone(TR_TZ)
-            home, away = str(item["HomeTeam"]).strip(), str(item["AwayTeam"]).strip()
-            if not home or not away:
-                continue
-            hs, ass = item.get("HomeTeamScore"), item.get("AwayTeamScore")
-            finished = hs is not None and ass is not None
-            if finished:
-                hs, ass = int(hs), int(ass)
-            else:
-                hs, ass = None, None
-            rows.append({"id":item.get("MatchNumber"),"round":item.get("RoundNumber","-"),
-                         "home":home,"away":away,"datetime":dt,"date":dt.date(),
-                         "time":dt.strftime("%H:%M"),"home_goals":hs,"away_goals":ass,
-                         "score":f"{hs} - {ass}" if finished else "-", "finished":finished,
-                         "location":str(item.get("Location") or "")})
-        except (KeyError, ValueError, TypeError, OverflowError):
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0", "Accept": "application/json"
+            })
+            with urllib.request.urlopen(req, timeout=20) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            if not isinstance(data, list) or not data:
+                raise ValueError("Boş veya beklenmeyen JSON")
+        except Exception as exc:
+            failures.append(f"{season}-{str(season+1)[-2:]}: {type(exc).__name__}")
             continue
+
+        for item in data:
+            try:
+                dt_utc = datetime.strptime(item["DateUtc"], "%Y-%m-%d %H:%M:%SZ").replace(tzinfo=UTC_TZ)
+                dt = dt_utc.astimezone(TR_TZ)
+                home = normalize_team(item["HomeTeam"])
+                away = normalize_team(item["AwayTeam"])
+                if not home or not away:
+                    continue
+                hs, ass = item.get("HomeTeamScore"), item.get("AwayTeamScore")
+                finished = hs is not None and ass is not None
+                hs, ass = (int(hs), int(ass)) if finished else (None, None)
+                rows.append({
+                    "id": item.get("MatchNumber"), "round": item.get("RoundNumber", "-"),
+                    "season": f"{season}-{str(season+1)[-2:]}",
+                    "home": home, "away": away, "datetime": dt, "date": dt.date(),
+                    "time": dt.strftime("%H:%M"), "home_goals": hs, "away_goals": ass,
+                    "score": f"{hs} - {ass}" if finished else "-", "finished": finished,
+                    "location": str(item.get("Location") or "")
+                })
+            except (KeyError, ValueError, TypeError, OverflowError):
+                continue
+
     if not rows:
-        raise ValueError("İşlenebilir maç verisi bulunamadı.")
-    return pd.DataFrame(rows).sort_values("datetime").reset_index(drop=True)
+        raise ValueError("Hiçbir sezon indirilemedi. Bağlantıyı kontrol et.")
+    df = pd.DataFrame(rows).sort_values("datetime")
+    df = df.drop_duplicates(subset=["datetime", "home", "away"], keep="last")
+    return df.reset_index(drop=True), failures
 
 
 def match_card(row):
@@ -195,7 +232,7 @@ def run_backtest(matches):
     Walk-forward backtest:
     each historical match is predicted using only earlier completed matches.
     """
-    finished_all = matches[matches["finished"]].sort_values("datetime").copy()
+    finished_all = matches[matches["finished"] & (matches["datetime"] < datetime.now(TR_TZ))].sort_values("datetime").copy()
     rows = []
 
     for _, target in finished_all.iterrows():
@@ -344,32 +381,38 @@ def stat_box(label, value):
     st.markdown(f'<div class="stat-card"><div class="stat-number">{value}</div><div class="stat-label">{escape(label)}</div></div>', unsafe_allow_html=True)
 
 try:
-    matches = get_matches()
+    matches, download_failures = get_matches()
     error = None
 except Exception as exc:
     matches = pd.DataFrame()
+    download_failures = []
     error = str(exc)
 
 now = datetime.now(TR_TZ)
 if error is None:
     completed = matches[matches["finished"] & (matches["datetime"] < now)].copy()
-    future = matches[(~matches["finished"]) & (matches["datetime"] >= now)].copy()
+    current_season = matches[matches["season"] == "2026-27"].copy()
+    future = current_season[(~current_season["finished"]) & (current_season["datetime"] >= now)].copy()
     next7 = future[future["date"] <= now.date() + timedelta(days=7)]
     next15 = future[future["date"] <= now.date() + timedelta(days=15)]
 else:
-    completed = future = next7 = next15 = pd.DataFrame()
+    completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Güven eşiği denetimi • V1.4.2</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Çok sezonlu analiz ve backtest • V1.5</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
     st.success("🟢 Fikstür ve skor verileri alındı.")
     st.caption("Kaynak: Fixture Download. Maç saatleri ve sonuçları resmî kaynaklarla kontrol edilmelidir.")
+    if download_failures:
+        st.warning("İndirilemeyen sezonlar: " + ", ".join(download_failures) + ". Test mevcut verilerle devam ediyor.")
+    if current_season.empty:
+        st.warning("2026-27 fikstürü indirilemedi; gelecek maçlar geçici olarak gösterilemiyor.")
 
 c1,c2,c3 = st.columns(3)
 with c1: stat_box("7 Günlük Maç",len(next7))
 with c2: stat_box("15 Günlük Maç",len(next15))
-with c3: stat_box("Oynanmış Maç",len(completed))
+with c3: stat_box("Tüm Sezonlarda Oynanmış",len(completed))
 
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
 
@@ -384,7 +427,7 @@ if menu == "🏠 Ana Sayfa":
 elif menu == "📅 Fikstür":
     st.subheader("Süper Lig Fikstürü")
     choice = st.selectbox("Gösterilecek maçlar",["Önümüzdeki 7 Gün","Önümüzdeki 15 Gün","Tüm Gelecek Maçlar","Geçmiş Maçlar","Tüm Sezon"])
-    selected = {"Önümüzdeki 7 Gün":next7,"Önümüzdeki 15 Gün":next15,"Tüm Gelecek Maçlar":future,"Geçmiş Maçlar":completed,"Tüm Sezon":matches}[choice]
+    selected = {"Önümüzdeki 7 Gün":next7,"Önümüzdeki 15 Gün":next15,"Tüm Gelecek Maçlar":future,"Geçmiş Maçlar":completed,"Tüm Sezon":current_season}[choice]
     if selected.empty:
         st.info("Bu bölümde maç bulunamadı.")
     else:
@@ -395,7 +438,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("Maç Analizi • V1.4.1")
+    st.subheader("Maç Analizi • V1.5")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
@@ -461,13 +504,19 @@ elif menu == "📊 Maç Analizi":
             )
 
 elif menu == "🧪 Backtest":
-    st.subheader("🧪 Model Backtest • V1.4.2")
+    st.subheader("🧪 Çok Sezonlu Backtest • V1.5")
     st.caption(
         "Her geçmiş maç, yalnızca o maçtan daha önce oynanmış karşılaşmalar kullanılarak yeniden tahmin edilir. "
-        "Bu test oran/kârlılık testi değil; modelin sonuç sınıflandırma isabetini ölçer."
+        "Bu test oran/kârlılık testi değil; modelin sonuç sınıflandırma isabetini ölçer. "
+        "Önceki sezon kadroları farklı olabilir; model bunu henüz dikkate almıyor."
     )
 
-    bt = run_backtest(matches)
+    if not completed.empty:
+        season_counts = completed.groupby("season").size().reset_index(name="Oynanmış Maç")
+        season_counts.columns = ["Sezon", "Oynanmış Maç"]
+        st.dataframe(season_counts, hide_index=True, use_container_width=True)
+
+    bt = run_backtest(completed)
 
     if bt.empty:
         st.warning("Backtest için yeterli geçmiş veri oluşmadı.")
@@ -528,8 +577,8 @@ elif menu == "🧪 Backtest":
             st.warning("Bu pazar/eşik için yorum yapmaya yetecek en az 5 maçlık örneklem yok.")
 
         st.warning(
-            "Bu tablo eşik seçmek için keşif amaçlıdır. Aynı 25 maç üzerinde eşik seçip başarı ilan etmek "
-            "overfitting yaratabilir. Sonraki aşamada daha geniş veri ve ayrı doğrulama dönemi gerekir."
+            "Eşikler bu veri üzerinde karşılaştırılıyor. Aynı veride en iyi eşiği seçmek, "
+            "bağımsız doğrulama olmadan gerçek performans kanıtı değildir."
         )
 
         st.markdown("### Son Backtest Maçları")
@@ -550,14 +599,17 @@ elif menu == "🧪 Backtest":
         )
 
         st.info(
-            "Bu sonuçlar yalnızca mevcut sezonun sınırlı geçmiş verisiyle yapılan walk-forward testidir. "
-            "Kupon motoruna geçmeden önce özellikle örneklem büyüklüğü ve pazar bazındaki isabetleri değerlendireceğiz."
+            "Test birden fazla sezondaki maçları tarih sırasıyla kullanır. "
+            "Her tahmin yalnızca kendi maçından önceki sonuçları görür. "
+            "Kupon motorundan önce bağımsız dönem doğrulaması gerekir."
         )
 
 else:
     st.subheader("Ayarlar")
     st.write("**Lig:** Türkiye Süper Lig")
-    st.write("**Sezon:** 2026–2027")
+    st.write("**Sezonlar:** 2023–24, 2024–25, 2025–26, 2026–27")
+    if error is None:
+        st.write("**Yüklenen sezonlar:** " + ", ".join(sorted(matches["season"].unique())))
     st.write("**Kaynak:** Fixture Download")
     st.write("**Saat dilimi:** Europe/Istanbul")
     st.write("**Önbellek:** 60 dakika")
@@ -566,4 +618,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V1.4.2 • Güven eşiği analizi • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V1.5 • Çok sezonlu backtest • Model tahminleri garanti değildir.")
