@@ -1,4 +1,4 @@
-"""V3.5: verified OddsPapi double-chance odds -> pre-match locked tracking ledger."""
+"""V3.6: verified OddsPapi double-chance odds -> pre-match locked tracking ledger."""
 import pandas as pd
 import streamlit as st
 from storage_v35 import load_records, save_records
@@ -48,7 +48,7 @@ def _fetch_one(row, dc, fixtures, api_key, odds_papi_get, find_exact_fixture):
         return None, 'Maç başlamış.'
     selection = str(row['Pazar'])
     if selection not in ('1X', 'X2'):
-        return None, 'V3.5 otomatik kayıt şu an yalnızca 1X/X2 için açık.'
+        return None, 'V3.6 otomatik kayıt şu an yalnızca 1X/X2 için açık.'
     fid = find_exact_fixture(row, fixtures)
     if not fid:
         return None, 'Takım/saat kesin eşleşmedi.'
@@ -82,7 +82,7 @@ def _lock(row, found, stake=100.0):
 
 def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_fixture):
     _ensure_store()
-    st.markdown('### 🤖 V3.5 • Otomatik oran kilitleme')
+    st.markdown('### 🤖 V3.6 • Otomatik oran kilitleme')
     st.caption('Doğrulanmış 90 dakika Çifte Şans oranını OddsPapi’den maç başlamadan alır ve oran defterine kilitler. Aynı seçim sonradan değiştirilmez. API kotası kullanılır.')
     if not api_key:
         st.warning('ODDSPAPI_KEY Streamlit Secrets içinde bulunamadı.')
@@ -133,4 +133,4 @@ def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_
         if any(r['Durum']=='KAYDEDİLMEDİ' for r in report):
             st.warning('Bazı seçimler güvenli eşleşme/fiyat bulunamadığı için kaydedilmedi; oran uydurulmadı.')
     except Exception as exc:
-        st.error('V3.5 otomatik oran hatası: ' + str(exc)[:180])
+        st.error('V3.6 otomatik oran hatası: ' + str(exc)[:180])

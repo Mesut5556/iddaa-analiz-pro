@@ -1,10 +1,10 @@
-"""V3.5 - Oran kaydi ve deneme ROI modulu. Model kodundan bagimsizdir."""
+"""V3.6 - Oran kaydi ve deneme ROI modulu. Model kodundan bagimsizdir."""
 import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
-from storage_v35 import load_records, save_records
+from storage_v35 import load_records, save_records, cloud_status
 
 TZ = ZoneInfo('Europe/Istanbul')
 FIELDS = ['id','tarih','mac','pazar','oran','kaynak','kayit_zamani','tutar']
@@ -41,8 +41,10 @@ def _restore(upload):
 
 def render(open_candidates, settled):
     _init()
-    st.markdown('## 💾 V3.5 • Maç öncesi oran defteri')
-    st.caption('Karar motoru değişmedi. Oran yalnızca maç başlamadan önce elle kaydedilir. API kotası kullanılmaz. Kayıtlar uygulamanın yerel defterine de yazılır; CSV yedeği taşınabilir güvenlik kopyasıdır.')
+    st.markdown('## 💾 V3.6 • Maç öncesi oran defteri')
+    st.caption('Karar motoru değişmedi. Oran kayıtları Supabase kalıcı veritabanına yazılır; CSV ayrıca taşınabilir yedektir.')
+    ok, msg = cloud_status()
+    (st.success if ok else st.warning)(('☁️ ' if ok else '⚠️ ') + msg)
     uploaded = st.file_uploader('📤 Önceki oran defteri CSV dosyanı geri yükle', type=['csv'], key='v31_restore')
     if uploaded is not None and st.button('CSV kayıtlarını yükle', key='v31_restore_btn'):
         try:
@@ -75,7 +77,7 @@ def render(open_candidates, settled):
                 else:
                     st.session_state.v31_records[key] = dict(id=key, tarih=kickoff.isoformat(), mac=str(r['Maç']), pazar=str(r['Pazar']), oran=float(odd), kaynak=source.strip(), kayit_zamani=at.isoformat(), tutar=float(stake))
                     save_records(st.session_state.v31_records)
-                    st.success('Oran kilitlendi. Yerel deftere de yazıldı; CSV yedeğini yine sakla.')
+                    st.success('Oran kilitlendi ve Supabase kalıcı veritabanına yazıldı.')
         else:
             st.info('Yeni oran kaydedilecek başlamamış ve kayıtsız sinyal yok.')
     else:
@@ -114,4 +116,4 @@ def render(open_candidates, settled):
         c4.metric('Sanal ROI',f'%{100*pnl/wagered:+.1f}' if wagered else '—')
     else:
         st.info('Oranı kaydedilmiş maçlar sonuçlandığında sanal ROI burada hesaplanacak.')
-    st.warning('ÖNEMLİ: Yerel defter sayfa geçişi/yenilemede kaydı korur; Streamlit Cloud yeniden başlatılır veya yeniden dağıtılırsa yerel dosya silinebilir. Bu yüzden CSV yedeğini sakla. Tam kalıcılık için sonraki adım harici veritabanıdır. Bu gerçek para yatırımı değildir; kâr garantisi yoktur.')
+    st.info('V3.6: Supabase bağlıysa kayıtlar deploy/restart sonrasında da korunur. CSV yedeği yine indirilebilir. Bu gerçek para yatırımı değildir; kâr garantisi yoktur.')
