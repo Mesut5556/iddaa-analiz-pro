@@ -1,4 +1,4 @@
-"""V3.28 Team Analysis Center.
+"""V3.29 Team Analysis Center.
 Read-only team dashboard built from fixture/results already loaded by app.py.
 Does not alter prediction, decision, odds, coupon or settlement logic.
 """
@@ -53,16 +53,29 @@ def _display_matches(df, team, limit=10):
 
 
 def render(matches, completed, current_season, future, league_table_before):
-    st.subheader("🛡️ Takım Analiz Merkezi • V3.28")
+    st.subheader("🛡️ Takım Analiz Merkezi • V3.29")
     st.caption("Takımın formunu, iç/deplasman performansını, gol eğilimlerini, lig konumunu ve yaklaşan maçlarını tek ekranda gösterir. Karar motorunu değiştirmez.")
     if matches is None or matches.empty:
         st.info("Takım analizi için veri yok."); return
 
-    teams=sorted(set(matches["home"].dropna()) | set(matches["away"].dropna()))
+    # V3.29: Takım seçiciyi yalnızca güncel 2026-27 Süper Lig takımlarıyla sınırla.
+    # Eski sezonlarda yer alan ancak bu sezon ligde olmayan takımlar seçim listesine girmez.
+    if current_season is not None and not current_season.empty:
+        selector_df = current_season.copy()
+        if "season" in selector_df.columns:
+            selector_df = selector_df[selector_df["season"].astype(str).eq("2026-27")].copy()
+        teams = sorted(set(selector_df["home"].dropna()) | set(selector_df["away"].dropna()))
+    else:
+        teams = []
+
+    if not teams:
+        st.info("2026-27 Süper Lig takım listesi oluşturulamadı.")
+        return
+
     team=st.selectbox("Takım seç",teams)
     hist=_team_matches(completed,team)
 
-    # V3.28: Güncel sezon verisini modül içinde de kesin olarak 2026-27 ile sınırla.
+    # Güncel sezon verisini modül içinde de kesin olarak 2026-27 ile sınırla.
     # Böylece eski sezonlar hiçbir koşulda "Güncel sezon görünümü"ne karışmaz.
     if current_season is not None and not current_season.empty:
         season_df = current_season.copy()
