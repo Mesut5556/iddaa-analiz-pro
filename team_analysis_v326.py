@@ -1,4 +1,4 @@
-"""V3.26 Team Analysis Center.
+"""V3.27 Team Analysis Center.
 Read-only team dashboard built from fixture/results already loaded by app.py.
 Does not alter prediction, decision, odds, coupon or settlement logic.
 """
@@ -53,7 +53,7 @@ def _display_matches(df, team, limit=10):
 
 
 def render(matches, completed, current_season, future, league_table_before):
-    st.subheader("🛡️ Takım Analiz Merkezi • V3.26")
+    st.subheader("🛡️ Takım Analiz Merkezi • V3.27")
     st.caption("Takımın formunu, iç/deplasman performansını, gol eğilimlerini, lig konumunu ve yaklaşan maçlarını tek ekranda gösterir. Karar motorunu değiştirmez.")
     if matches is None or matches.empty:
         st.info("Takım analizi için veri yok."); return
@@ -75,7 +75,7 @@ def render(matches, completed, current_season, future, league_table_before):
     c4.metric("Son 10 yenen/maç",s10["Yenen/maç"] if s10 else "—")
 
     st.markdown("### 📍 Güncel sezon görünümü")
-    table=league_table_before(completed, pd.Timestamp.now(tz="Europe/Istanbul") + pd.Timedelta(days=1))
+    table=league_table_before(current_season[current_season["finished"] == True].copy(), pd.Timestamp.now(tz="Europe/Istanbul") + pd.Timedelta(days=1))  # noqa:E712
     if table is not None and not table.empty and team in set(table["Takım"]):
         st.dataframe(table[table["Takım"]==team],hide_index=True,use_container_width=True)
     else: st.info("Güncel lig sırası hesaplanamadı.")
