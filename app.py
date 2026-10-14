@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı • V3.37</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı • V3.38</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1212,7 +1212,7 @@ elif menu == "🛡️ Takım Analizi":
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.37")
+    st.subheader("🎟️ Kupon Merkezi • V3.38")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1296,7 +1296,7 @@ elif menu == "🎟️ Kupon Merkezi":
         try:
             from coupon_odds_v318 import enrich_coupon, combined_odds
             coupon, odds_info = enrich_coupon(coupon)
-            st.markdown("#### 💰 V3.37 • Gerçek oranlı kupon hesabı")
+            st.markdown("#### 💰 V3.38 • Gerçek oranlı kupon hesabı")
             if odds_info.get("error"):
                 st.caption(odds_info["error"])
 
@@ -1338,11 +1338,11 @@ elif menu == "🎟️ Kupon Merkezi":
                 missing = max(total_legs - matched, 0)
                 st.info(f"{matched}/{total_legs} ayakta kilitli gerçek oran bulundu. {missing} ayak daha kilitlenmeden toplam kupon oranı ve dönüş hesabı yapılmayacak.")
         except Exception as exc:
-            st.warning("V3.37 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
+            st.warning("V3.38 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
 
         # Authenticated users persist the exact coupon, including locked odds when available.
         try:
-            from account_v319 import current_user, save_coupon
+            from account_v338 import current_user, save_coupon
             if current_user():
                 save_title = st.text_input("Kupon adı (isteğe bağlı)", key=f"v317_title_{mode}")
                 if st.button("💾 Bu kuponu hesabıma kaydet", key=f"v317_save_{mode}", use_container_width=True):
@@ -1513,7 +1513,7 @@ elif menu == "🎟️ Kupon Merkezi":
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
 elif menu == "👤 Hesabım":
-    from account_v319 import render_account
+    from account_v338 import render_account
     render_account(matches)
 
 elif menu == "📒 Canlı Takip":
