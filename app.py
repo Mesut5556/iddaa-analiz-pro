@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli • V3.17</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.18</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1128,7 +1128,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.14")
+    st.subheader("🎟️ Kupon Merkezi • V3.18")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1165,12 +1165,35 @@ elif menu == "🎟️ Kupon Merkezi":
         st.metric("Yaklaşık birleşik model olasılığı*", f"%{combined:.1f}")
         st.caption(
             "*Maçları bağımsız varsayan kaba çarpımdır; gerçek kupon kazanma olasılığı olarak garanti edilemez. "
-            "Oran/kârlılık modeli henüz eklenmedi."
+            "Aşağıdaki bookmaker oranları model yüzdelerinden ayrıdır."
         )
 
-        # V3.16: authenticated users can persist this exact coupon in Supabase.
+        # V3.18: read-only link to the already locked pre-match odds ledger.
         try:
-            from account_v317 import current_user, save_coupon
+            from coupon_odds_v318 import enrich_coupon, combined_odds
+            coupon, odds_info = enrich_coupon(coupon)
+            st.markdown("#### 💰 Kilitli maç önü oranları")
+            if odds_info.get("error"):
+                st.caption(odds_info["error"])
+            odds_view = coupon[["Maç","Pazar","Maç Önü Oran","Oran Kaynağı"]].copy()
+            odds_view["Maç Önü Oran"] = odds_view["Maç Önü Oran"].map(lambda x: "—" if pd.isna(x) else f"{float(x):.3f}")
+            odds_view["Oran Kaynağı"] = odds_view["Oran Kaynağı"].fillna("—")
+            st.dataframe(odds_view, hide_index=True, use_container_width=True)
+            total_odd = combined_odds(coupon)
+            if total_odd is not None:
+                c1, c2 = st.columns(2)
+                c1.metric("Toplam gerçek kupon oranı", f"{total_odd:.2f}")
+                stake = c2.number_input("Örnek kupon tutarı (TL)", min_value=10.0, max_value=100000.0, value=100.0, step=10.0, key=f"v318_stake_{mode}")
+                st.metric("Olası brüt dönüş", f"{stake * total_odd:,.2f} TL")
+                st.caption("Brüt dönüş = kupon tutarı × kilitli oranların çarpımıdır; vergi/kesinti ve bahis kuralları dahil değildir. Kâr garantisi değildir.")
+            else:
+                st.info(f"{odds_info.get('matched',0)}/{odds_info.get('total',len(coupon))} ayakta kilitli gerçek oran bulundu. Toplam oran için tüm ayakların maç önü oranı gerekli.")
+        except Exception as exc:
+            st.warning("V3.18 oran görünümü geçici olarak hazırlanamadı: " + str(exc)[:160])
+
+        # Authenticated users persist the exact coupon, including locked odds when available.
+        try:
+            from account_v318 import current_user, save_coupon
             if current_user():
                 save_title = st.text_input("Kupon adı (isteğe bağlı)", key=f"v317_title_{mode}")
                 if st.button("💾 Bu kuponu hesabıma kaydet", key=f"v317_save_{mode}", use_container_width=True):
@@ -1341,7 +1364,7 @@ elif menu == "🎟️ Kupon Merkezi":
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
 elif menu == "👤 Hesabım":
-    from account_v317 import render_account
+    from account_v318 import render_account
     render_account(matches)
 
 elif menu == "📒 Canlı Takip":
