@@ -1,4 +1,4 @@
-"""V3.35 account + immutable coupon snapshot + automatic settlement + weekly coupon performance.
+"""V3.37 account + immutable coupon snapshot + automatic settlement + weekly coupon performance + leg detail ledger.
 Uses Supabase Auth/RLS. Coupon settlement only uses finished fixtures already supplied by app.py.
 """
 import json
@@ -255,7 +255,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.36")
+    st.subheader("👤 Hesabım • V3.37")
     st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. Karar motoru ve V3.16 sonuçlandırma mantığı değiştirilmedi.")
     user = current_user()
     if not user:
@@ -409,7 +409,7 @@ def render_account(matches=None):
         x1,x2,x3,x4=st.columns(4)
         x1.metric("Durum", status); x2.metric("Ayak", len(legs)); x3.metric("Sonuçlanan", f"{done}/{len(legs)}"); x4.metric("Tip", str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ",""))
         st.caption(f"Kayıt: {created}")
-        # V3.36: coupon detail card. All figures come from the frozen save-time snapshot;
+        # V3.37: coupon detail card. All figures come from the frozen save-time snapshot;
         # settlement continues to use the existing V3.16 logic without changing the decision engine.
         if status == "KAZANDI":
             st.success("🏆 KUPON KAZANDI")
@@ -438,18 +438,29 @@ def render_account(matches=None):
             if not legs:
                 st.info("Bu kuponda ayak verisi yok.")
             else:
+                leg_states=[_leg_status(x) for x in legs if isinstance(x,dict)]
+                won=sum(x=="BİLDİ" for x in leg_states)
+                lost=sum(x=="BİLEMEDİ" for x in leg_states)
+                waiting=sum(x not in ("BİLDİ","BİLEMEDİ") for x in leg_states)
+                q1,q2,q3=st.columns(3)
+                q1.metric("✅ Bildi", won); q2.metric("❌ Bilemedi", lost); q3.metric("⏳ Bekliyor", waiting)
                 display=[]
                 for leg in legs:
                     if not isinstance(leg,dict): continue
                     ls=_leg_status(leg)
                     li="✅" if ls=="BİLDİ" else ("❌" if ls=="BİLEMEDİ" else "⏳")
                     display.append({
-                        "Durum":f"{li} {ls}", "Tarih":str(leg.get("Tarih",""))[:16].replace("T"," "),
-                        "Maç":leg.get("Maç","—"), "Pazar Grubu":leg.get("Pazar Grubu","—"),
-                        "Seçim":leg.get("Pazar") or leg.get("Seçim") or "—", "Skor":leg.get("V3.16 Skor") or "—",
-                        "Maç Önü Oran": leg.get("Maç Önü Oran") if leg.get("Maç Önü Oran") is not None else "—",
-                        "Oran Kaynağı": leg.get("Oran Kaynağı") or "—",
-                        "Model %":leg.get("Model %","—"), "Backtest %":leg.get("Backtest %","—")
+                        "Maç":leg.get("Maç","—"),
+                        "Seçim":leg.get("Pazar") or leg.get("Seçim") or "—",
+                        "Kilitli Oran":leg.get("Maç Önü Oran") if leg.get("Maç Önü Oran") is not None else "—",
+                        "Skor":leg.get("V3.16 Skor") or "—",
+                        "Sonuç":f"{li} {ls}",
+                        "Tarih":str(leg.get("Tarih",""))[:16].replace("T"," "),
+                        "Pazar Grubu":leg.get("Pazar Grubu","—"),
+                        "Oran Kaynağı":leg.get("Oran Kaynağı") or "—",
+                        "Model %":leg.get("Model %","—"),
+                        "Backtest %":leg.get("Backtest %","—")
                     })
                 st.dataframe(pd.DataFrame(display), hide_index=True, use_container_width=True)
+                st.caption("V3.37: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
         st.divider()
