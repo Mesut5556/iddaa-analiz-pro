@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi • V3.14</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları • V3.15</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -935,7 +935,7 @@ def extract_market_odds(data, market):
                         pass
     return max(found, key=lambda x: x[0]) if found else None
 
-menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","📒 Canlı Takip","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
+menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
 
 if menu == "🏠 Ana Sayfa":
     st.subheader("Önümüzdeki 15 Günün Maçları")
@@ -1168,6 +1168,19 @@ elif menu == "🎟️ Kupon Merkezi":
             "Oran/kârlılık modeli henüz eklenmedi."
         )
 
+        # V3.15: authenticated users can persist this exact coupon in Supabase.
+        try:
+            from account_v315 import current_user, save_coupon
+            if current_user():
+                save_title = st.text_input("Kupon adı (isteğe bağlı)", key=f"v315_title_{mode}")
+                if st.button("💾 Bu kuponu hesabıma kaydet", key=f"v315_save_{mode}", use_container_width=True):
+                    save_coupon(coupon, mode, save_title)
+                    st.success("Kupon hesabına kalıcı olarak kaydedildi.")
+            else:
+                st.info("💾 Kuponu kalıcı kaydetmek için 👤 Hesabım bölümünden giriş yap.")
+        except Exception as exc:
+            st.warning("V3.15 kupon kaydı: " + str(exc)[:180])
+
     st.markdown("### Uygun Sinyaller")
     if candidates.empty:
         st.write("Önümüzdeki 7 günde V3.14 motorundan geçen ANA SEÇİM bulunamadı.")
@@ -1326,6 +1339,10 @@ elif menu == "🎟️ Kupon Merkezi":
         st.warning("*V3.14 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
                    "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
+
+elif menu == "👤 Hesabım":
+    from account_v315 import render_account
+    render_account()
 
 elif menu == "📒 Canlı Takip":
     from tracking_v313 import render as render_tracking_v31
@@ -1608,4 +1625,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.14 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.15 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
