@@ -1,4 +1,4 @@
-"""V3.9.4.4 persistent odds ledger. Supabase is primary; verified read/write diagnostics included."""
+"""V3.10.4 persistent odds ledger. Supabase is primary; verified read/write diagnostics included."""
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -79,7 +79,8 @@ def _from_db(r):
         'tutar': float(r.get('stake') or 100),
         'model_pct': float(r.get('model_pct') or 0), 'backtest_pct': float(r.get('backtest_pct') or 0),
         'status': str(r.get('status') or 'BEKLIYOR'), 'is_hit': r.get('is_hit'),
-        'profit_loss': r.get('profit_loss'), 'settled_at': r.get('settled_at')
+        'profit_loss': r.get('profit_loss'), 'settled_at': r.get('settled_at'),
+        'home_score': r.get('home_score'), 'away_score': r.get('away_score')
     }
 
 
@@ -172,22 +173,38 @@ def save_records(records=None):
 
 
 def settle_records(outcomes):
-    """Persist settled hit/loss + virtual P/L without changing locked pre-match odds."""
-    records = load_records()
+    """Persist final result + virtual P/L. Existing settled rows are immutable.
+
+    outcomes accepts either {key: bool} or
+    {key: {"hit": bool, "home_score": int, "away_score": int}}.
+    """
+    records = load_records(force=True)
     changed = False
     now = datetime.now(timezone.utc).isoformat()
-    for key, hit in outcomes.items():
-        if key not in records or records[key].get('status') in ('BILDI', 'BILEMEDI'):
+    for key, outcome in outcomes.items():
+        if key not in records:
             continue
         r = records[key]
+        if str(r.get('status','')).upper() in ('BILDI', 'BILEMEDI'):
+            continue
+        if isinstance(outcome, dict):
+            hit = bool(outcome.get('hit'))
+            hs = outcome.get('home_score')
+            aws = outcome.get('away_score')
+        else:
+            hit, hs, aws = bool(outcome), None, None
         stake, odds = float(r.get('tutar',100)), float(r.get('oran',0))
         r['status'] = 'BILDI' if hit else 'BILEMEDI'
-        r['is_hit'] = bool(hit)
+        r['is_hit'] = hit
         r['profit_loss'] = round(stake*(odds-1) if hit else -stake, 2)
+        r['home_score'] = None if hs is None else int(hs)
+        r['away_score'] = None if aws is None else int(aws)
         r['settled_at'] = now
         changed = True
     if changed:
         save_records(records)
+        # Re-read what Supabase actually persisted.
+        load_records(force=True)
     return changed
 
 
@@ -248,7 +265,7 @@ def cloud_write_probe():
     row = {
         'match_key': probe_key, 'match_date': now, 'home_team': 'WRITE', 'away_team': 'PROBE',
         'market': 'DIAGNOSTIC', 'selection': 'TEST', 'model_pct': 0, 'backtest_pct': 0,
-        'odds': 1.0, 'bookmaker': 'V3.9.4.4', 'stake': 1.0, 'locked_at': now,
+        'odds': 1.0, 'bookmaker': 'V3.10.4', 'stake': 1.0, 'locked_at': now,
         'status': 'TEST', 'home_score': None, 'away_score': None, 'is_hit': None,
         'profit_loss': None, 'settled_at': None
     }
