@@ -959,7 +959,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("📊 Maç Analiz Merkezi • V3.14")
+    st.subheader("📊 Maç Analiz Merkezi • V3.31")
     st.caption("Tek ekranda form, saha performansı, gol eğilimleri, Poisson modeli, güven filtresi ve isteğe bağlı canlı 1.5 gol oranı.")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
@@ -970,6 +970,9 @@ elif menu == "📊 Maç Analizi":
         match_card(selected_match)
         home, away = selected_match["home"], selected_match["away"]
         before = selected_match["datetime"]
+
+        from match_team_bridge_v331 import render as render_match_team_bridge
+        render_match_team_bridge(completed, selected_match, prediction_model)
 
         st.markdown("### ⚡ Hızlı görünüm")
         h5 = team_stats(team_history(completed, home, before, 5), home)
