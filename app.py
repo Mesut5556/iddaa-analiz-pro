@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.30</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.33</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -935,7 +935,17 @@ def extract_market_odds(data, market):
                         pass
     return max(found, key=lambda x: x[0]) if found else None
 
-menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🛡️ Takım Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","📈 Model Performansı","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
+def _v333_open_match_analysis(home, away, dt_iso):
+    """Kupon Merkezinden seçilen maçı Maç Analizine taşır; karar motoruna dokunmaz."""
+    st.session_state["v333_target_match"] = {
+        "home": str(home),
+        "away": str(away),
+        "datetime": str(dt_iso),
+    }
+    st.session_state["main_menu"] = "📊 Maç Analizi"
+    st.session_state.pop("v333_match_selector", None)
+
+menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🛡️ Takım Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","📈 Model Performansı","🧪 Backtest","⚙️ Ayarlar"],horizontal=True,key="main_menu")
 
 if menu == "🏠 Ana Sayfa":
     st.subheader("Önümüzdeki 15 Günün Maçları")
@@ -959,13 +969,30 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("📊 Maç Analiz Merkezi • V3.32")
+    st.subheader("📊 Maç Analiz Merkezi • V3.33")
     st.caption("Tek ekranda form, saha performansı, gol eğilimleri, Poisson modeli, güven filtresi ve isteğe bağlı canlı 1.5 gol oranı.")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
         labels = [f'{r["home"]} - {r["away"]} | {r["datetime"].strftime("%d.%m.%Y %H:%M")}' for _,r in future.iterrows()]
-        pos = st.selectbox("Maç seç", range(len(labels)), format_func=lambda i: labels[i])
+
+        # V3.33: Kupon Merkezinden gelen maç varsa aynı maçı otomatik seç.
+        default_pos = 0
+        target = st.session_state.pop("v333_target_match", None)
+        if target:
+            target_dt = pd.to_datetime(target.get("datetime"), errors="coerce")
+            for i, (_, r) in enumerate(future.iterrows()):
+                same_teams = str(r["home"]) == target.get("home") and str(r["away"]) == target.get("away")
+                row_dt = pd.to_datetime(r["datetime"], errors="coerce")
+                same_dt = pd.notna(target_dt) and pd.notna(row_dt) and row_dt == target_dt
+                if same_teams and (same_dt or pd.isna(target_dt)):
+                    default_pos = i
+                    break
+
+        pos = st.selectbox(
+            "Maç seç", range(len(labels)), index=default_pos,
+            format_func=lambda i: labels[i], key="v333_match_selector"
+        )
         selected_match = future.iloc[pos]
         match_card(selected_match)
         home, away = selected_match["home"], selected_match["away"]
@@ -1185,7 +1212,7 @@ elif menu == "🛡️ Takım Analizi":
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.25.1")
+    st.subheader("🎟️ Kupon Merkezi • V3.33")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1226,6 +1253,31 @@ elif menu == "🎟️ Kupon Merkezi":
             })
         show = pd.DataFrame(coupon_rows)
         st.dataframe(show, hide_index=True, use_container_width=True)
+
+        # V3.33: Kupondaki maçı tek dokunuşla ayrıntılı Maç Analizine aç.
+        st.markdown("#### 🔗 Kupondan Maç Analizine")
+        coupon_nav_options = list(range(len(coupon)))
+        nav_i = st.selectbox(
+            "Analizini açacağın maç",
+            coupon_nav_options,
+            format_func=lambda i: str(coupon.iloc[i].get("Maç", "—")),
+            key=f"v333_coupon_match_{mode}",
+        )
+        nav_row = coupon.iloc[nav_i]
+        nav_match = str(nav_row.get("Maç", ""))
+        nav_home, nav_away = (nav_match.split(" - ", 1) + [""])[:2] if " - " in nav_match else ("", "")
+        nav_dt = pd.to_datetime(nav_row.get("Tarih"), errors="coerce")
+        if nav_home and nav_away and pd.notna(nav_dt):
+            st.button(
+                "🔎 Seçili maçı Maç Analizinde aç",
+                use_container_width=True,
+                key=f"v333_open_{mode}",
+                on_click=_v333_open_match_analysis,
+                args=(nav_home, nav_away, nav_dt.isoformat()),
+            )
+            st.caption("Maç Analizi açıldığında aynı maç otomatik seçilir; V3.14 Nihai Karar Motorunun kararı değişmez.")
+        else:
+            st.caption("Bu kupon satırı Maç Analizi ile eşleştirilemedi.")
 
         probs = coupon["Model %"].astype(float) / 100.0
         combined = 100.0
@@ -1728,4 +1780,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.17 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.33 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
