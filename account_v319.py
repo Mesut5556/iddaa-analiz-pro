@@ -255,7 +255,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.35")
+    st.subheader("👤 Hesabım • V3.36")
     st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. Karar motoru ve V3.16 sonuçlandırma mantığı değiştirilmedi.")
     user = current_user()
     if not user:
@@ -388,7 +388,7 @@ def render_account(matches=None):
     q2.metric("Haftalık ROI", f"%{weekly_roi:+.2f}" if weekly_roi is not None else "—")
     st.caption(f"Hafta: {week_start.strftime('%d.%m.%Y')} – {(week_end - pd.Timedelta(days=1)).strftime('%d.%m.%Y')}. Bekleyen kuponlar isabet ve ROI hesabına katılmaz.")
 
-    st.markdown("### 🎟️ Kayıtlı kuponlarım")
+    st.markdown("### 🎟️ Kuponlarım • ayrıntılı sonuç defteri")
     if not rows:
         st.info("Henüz kayıtlı kupon yok. Kupon Merkezi'nden bir kuponu hesabına kaydedebilirsin."); return
 
@@ -409,6 +409,14 @@ def render_account(matches=None):
         x1,x2,x3,x4=st.columns(4)
         x1.metric("Durum", status); x2.metric("Ayak", len(legs)); x3.metric("Sonuçlanan", f"{done}/{len(legs)}"); x4.metric("Tip", str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ",""))
         st.caption(f"Kayıt: {created}")
+        # V3.36: coupon detail card. All figures come from the frozen save-time snapshot;
+        # settlement continues to use the existing V3.16 logic without changing the decision engine.
+        if status == "KAZANDI":
+            st.success("🏆 KUPON KAZANDI")
+        elif status == "KAYBETTI":
+            st.error("❌ KUPON KAYBETTİ")
+        else:
+            st.info("⏳ KUPON AÇIK • maç sonuçları bekleniyor")
         # V3.20: show frozen save-time snapshot and, after settlement, realized result.
         if legs and isinstance(legs[0], dict):
             meta_leg = legs[0]
