@@ -1,4 +1,4 @@
-"""V3.16 account + persistent coupon storage + automatic coupon settlement.
+"""V3.20 account + immutable coupon financial snapshot + automatic coupon settlement.
 Uses Supabase Auth/RLS. Coupon settlement only uses finished fixtures already supplied by app.py.
 """
 import json
@@ -101,7 +101,7 @@ def save_coupon(coupon, mode, title="", stake=None, total_odds=None):
     if not user or not token: raise ValueError("Kupon kaydetmek için önce Hesabım bölümünden giriş yap.")
     if coupon is None or coupon.empty: raise ValueError("Kaydedilecek kupon boş.")
     legs = coupon_payload(coupon)
-    # V3.19: coupon financial snapshot is stored inside the immutable coupon payload.
+    # V3.20: financial snapshot is frozen inside the coupon payload at save time.
     # This is backwards-compatible with the existing saved_coupons schema/RLS.
     if legs:
         try:
@@ -117,6 +117,7 @@ def save_coupon(coupon, mode, title="", stake=None, total_odds=None):
             "V3.19 Toplam Oran": total_value,
             "V3.19 Olası Brüt Dönüş": (stake_value * total_value) if stake_value is not None and total_value is not None else None,
             "V3.19 Oran Kilidi": datetime.now().astimezone().isoformat(),
+            "V3.20 Finansal Snapshot": True,
         }
         legs[0].update(meta)
     body = {"user_id": user["id"], "title": (title or f"{mode} • {datetime.now().strftime('%d.%m.%Y')}")[:120],
@@ -212,6 +213,23 @@ def _settle_coupon(row, matches):
         new_legs.append(leg)
     new_status = "KAYBETTI" if any_lost else ("KAZANDI" if all_finished and all_won else "ACIK")
     if new_status != row.get("status"): changed = True
+
+    # V3.20: once the coupon is fully decided, freeze realized financial result
+    # using ONLY the stake and total odds captured when the coupon was saved.
+    if new_status in ("KAZANDI", "KAYBETTI") and new_legs and isinstance(new_legs[0], dict):
+        meta = new_legs[0]
+        try:
+            stake = float(meta.get("V3.19 Kupon Tutarı")) if meta.get("V3.19 Kupon Tutarı") is not None else None
+            total_odds = float(meta.get("V3.19 Toplam Oran")) if meta.get("V3.19 Toplam Oran") is not None else None
+        except (TypeError, ValueError):
+            stake, total_odds = None, None
+        if stake is not None:
+            gross = stake * total_odds if new_status == "KAZANDI" and total_odds is not None else (0.0 if new_status == "KAYBETTI" else None)
+            net = (gross - stake) if gross is not None else None
+            meta["V3.20 Gerçekleşen Brüt Dönüş"] = gross
+            meta["V3.20 Net TL"] = net
+            meta["V3.20 Finansal Sonuçlandı"] = datetime.now().astimezone().isoformat()
+            changed = True
     return (new_legs, new_status) if changed else None
 
 
@@ -237,7 +255,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.19")
+    st.subheader("👤 Hesabım • V3.20")
     st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. Karar motoru ve V3.16 sonuçlandırma mantığı değiştirilmedi.")
     user = current_user()
     if not user:
@@ -268,7 +286,7 @@ def render_account(matches=None):
     if matches is not None:
         try:
             info=settle_saved_coupons(matches)
-            if info["updated"]: st.success(f"V3.19: {info['updated']} kupon kaydı yeni maç sonuçlarıyla güncellendi.")
+            if info["updated"]: st.success(f"V3.20: {info['updated']} kupon kaydı yeni maç sonuçlarıyla güncellendi.")
         except Exception as exc: st.warning("Kupon sonuçlandırma geçici olarak tamamlanamadı: "+str(exc)[:160])
 
     rows=list_coupons()
@@ -298,7 +316,7 @@ def render_account(matches=None):
         x1,x2,x3,x4=st.columns(4)
         x1.metric("Durum", status); x2.metric("Ayak", len(legs)); x3.metric("Sonuçlanan", f"{done}/{len(legs)}"); x4.metric("Tip", str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ",""))
         st.caption(f"Kayıt: {created}")
-        # V3.19: show the exact financial snapshot captured when the coupon was saved.
+        # V3.20: show frozen save-time snapshot and, after settlement, realized result.
         if legs and isinstance(legs[0], dict):
             meta_leg = legs[0]
             saved_stake = meta_leg.get("V3.19 Kupon Tutarı")
@@ -309,6 +327,12 @@ def render_account(matches=None):
                 m1.metric("Kayıtlı toplam oran", f"{float(saved_total):.2f}")
                 m2.metric("Kupon tutarı", f"{float(saved_stake):,.2f} TL" if saved_stake is not None else "—")
                 m3.metric("Olası brüt dönüş", f"{float(saved_return):,.2f} TL" if saved_return is not None else "—")
+                realized_net = meta_leg.get("V3.20 Net TL")
+                realized_gross = meta_leg.get("V3.20 Gerçekleşen Brüt Dönüş")
+                if realized_net is not None:
+                    r1,r2=st.columns(2)
+                    r1.metric("Gerçekleşen brüt dönüş", f"{float(realized_gross):,.2f} TL" if realized_gross is not None else "—")
+                    r2.metric("Net sonuç", f"{float(realized_net):+,.2f} TL")
         with st.expander("Kupon ayaklarını göster", expanded=(len(visible)==1)):
             if not legs:
                 st.info("Bu kuponda ayak verisi yok.")
