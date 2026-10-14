@@ -1,4 +1,4 @@
-"""V3.21 account + immutable coupon financial snapshot + automatic coupon settlement + portfolio finance.
+"""V3.35 account + immutable coupon snapshot + automatic settlement + weekly coupon performance.
 Uses Supabase Auth/RLS. Coupon settlement only uses finished fixtures already supplied by app.py.
 """
 import json
@@ -255,7 +255,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.21")
+    st.subheader("👤 Hesabım • V3.35")
     st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. Karar motoru ve V3.16 sonuçlandırma mantığı değiştirilmedi.")
     user = current_user()
     if not user:
@@ -336,6 +336,57 @@ def render_account(matches=None):
     roi = (realized_net_total / settled_staked * 100.0) if settled_staked > 0 else None
     st.metric("Sonuçlanan kupon ROI", f"%{roi:+.2f}" if roi is not None else "—")
     st.caption("ROI yalnızca sonucu kesinleşmiş ve kayıt anında tutarı/oranı dondurulmuş kuponlardan hesaplanır. Açık kuponlar ROI'ye dahil edilmez.")
+
+    # V3.35: Monday-Sunday weekly coupon performance from persistent saved coupons.
+    st.markdown("### 📅 Bu haftanın kupon performansı")
+    local_now = pd.Timestamp.now(tz="Europe/Istanbul")
+    week_start = local_now.normalize() - pd.Timedelta(days=local_now.weekday())
+    week_end = week_start + pd.Timedelta(days=7)
+    weekly_rows = []
+    for row in rows:
+        created = pd.to_datetime(row.get("created_at"), errors="coerce", utc=True)
+        if pd.isna(created):
+            continue
+        created = created.tz_convert("Europe/Istanbul")
+        if week_start <= created < week_end:
+            weekly_rows.append(row)
+    weekly_total = len(weekly_rows)
+    weekly_open = sum(r.get("status") == "ACIK" for r in weekly_rows)
+    weekly_won = sum(r.get("status") == "KAZANDI" for r in weekly_rows)
+    weekly_lost = sum(r.get("status") == "KAYBETTI" for r in weekly_rows)
+    weekly_settled = weekly_won + weekly_lost
+    weekly_hit = (100.0 * weekly_won / weekly_settled) if weekly_settled else None
+    w1,w2,w3,w4,w5 = st.columns(5)
+    w1.metric("Kaydedilen", weekly_total)
+    w2.metric("Açık", weekly_open)
+    w3.metric("Kazandı", weekly_won)
+    w4.metric("Kaybetti", weekly_lost)
+    w5.metric("Kupon isabeti", f"%{weekly_hit:.1f}" if weekly_hit is not None else "—")
+
+    weekly_stake = 0.0
+    weekly_net = 0.0
+    weekly_fin_n = 0
+    for row in weekly_rows:
+        if row.get("status") not in ("KAZANDI", "KAYBETTI"):
+            continue
+        legs_w = row.get("legs") if isinstance(row.get("legs"), list) else []
+        if not legs_w or not isinstance(legs_w[0], dict):
+            continue
+        meta_w = legs_w[0]
+        try:
+            stake_w = float(meta_w.get("V3.19 Kupon Tutarı")) if meta_w.get("V3.19 Kupon Tutarı") is not None else None
+            net_w = float(meta_w.get("V3.20 Net TL")) if meta_w.get("V3.20 Net TL") is not None else None
+        except (TypeError, ValueError):
+            stake_w, net_w = None, None
+        if stake_w is not None and net_w is not None:
+            weekly_stake += stake_w
+            weekly_net += net_w
+            weekly_fin_n += 1
+    weekly_roi = (weekly_net / weekly_stake * 100.0) if weekly_stake > 0 else None
+    q1,q2 = st.columns(2)
+    q1.metric("Haftalık net sonuç", f"{weekly_net:+,.2f} TL" if weekly_fin_n else "—")
+    q2.metric("Haftalık ROI", f"%{weekly_roi:+.2f}" if weekly_roi is not None else "—")
+    st.caption(f"Hafta: {week_start.strftime('%d.%m.%Y')} – {(week_end - pd.Timedelta(days=1)).strftime('%d.%m.%Y')}. Bekleyen kuponlar isabet ve ROI hesabına katılmaz.")
 
     st.markdown("### 🎟️ Kayıtlı kuponlarım")
     if not rows:
