@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.29</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.30</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1128,7 +1128,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🛡️ Takım Analizi":
-    from team_analysis_v328 import render as render_team_analysis
+    from team_analysis_v330 import render as render_team_analysis
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
