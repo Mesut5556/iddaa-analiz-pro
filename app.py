@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.18</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.19</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1128,7 +1128,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.18")
+    st.subheader("🎟️ Kupon Merkezi • V3.19")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1193,16 +1193,16 @@ elif menu == "🎟️ Kupon Merkezi":
 
         # Authenticated users persist the exact coupon, including locked odds when available.
         try:
-            from account_v318 import current_user, save_coupon
+            from account_v319 import current_user, save_coupon
             if current_user():
                 save_title = st.text_input("Kupon adı (isteğe bağlı)", key=f"v317_title_{mode}")
                 if st.button("💾 Bu kuponu hesabıma kaydet", key=f"v317_save_{mode}", use_container_width=True):
-                    save_coupon(coupon, mode, save_title)
+                    save_coupon(coupon, mode, save_title, stake=stake if total_odd is not None else None, total_odds=total_odd)
                     st.success("Kupon hesabına kalıcı olarak kaydedildi.")
             else:
                 st.info("💾 Kuponu kalıcı kaydetmek için 👤 Hesabım bölümünden giriş yap.")
         except Exception as exc:
-            st.warning("V3.17 kupon kaydı: " + str(exc)[:180])
+            st.warning("V3.19 kupon kaydı: " + str(exc)[:180])
 
     st.markdown("### Uygun Sinyaller")
     if candidates.empty:
@@ -1364,7 +1364,7 @@ elif menu == "🎟️ Kupon Merkezi":
                    "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
 elif menu == "👤 Hesabım":
-    from account_v318 import render_account
+    from account_v319 import render_account
     render_account(matches)
 
 elif menu == "📒 Canlı Takip":
