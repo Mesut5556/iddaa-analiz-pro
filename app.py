@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.33</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.34</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -969,14 +969,14 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("📊 Maç Analiz Merkezi • V3.33")
+    st.subheader("📊 Maç Analiz Merkezi • V3.34")
     st.caption("Tek ekranda form, saha performansı, gol eğilimleri, Poisson modeli, güven filtresi ve isteğe bağlı canlı 1.5 gol oranı.")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
     else:
         labels = [f'{r["home"]} - {r["away"]} | {r["datetime"].strftime("%d.%m.%Y %H:%M")}' for _,r in future.iterrows()]
 
-        # V3.33: Kupon Merkezinden gelen maç varsa aynı maçı otomatik seç.
+        # V3.34: Kupon Merkezinden gelen maç varsa aynı maçı otomatik seç.
         default_pos = 0
         target = st.session_state.pop("v333_target_match", None)
         if target:
@@ -1212,7 +1212,7 @@ elif menu == "🛡️ Takım Analizi":
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.33")
+    st.subheader("🎟️ Kupon Merkezi • V3.34")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1254,7 +1254,7 @@ elif menu == "🎟️ Kupon Merkezi":
         show = pd.DataFrame(coupon_rows)
         st.dataframe(show, hide_index=True, use_container_width=True)
 
-        # V3.33: Kupondaki maçı tek dokunuşla ayrıntılı Maç Analizine aç.
+        # V3.34: Kupondaki maçı tek dokunuşla ayrıntılı Maç Analizine aç.
         st.markdown("#### 🔗 Kupondan Maç Analizine")
         coupon_nav_options = list(range(len(coupon)))
         nav_i = st.selectbox(
@@ -1289,28 +1289,56 @@ elif menu == "🎟️ Kupon Merkezi":
             "Aşağıdaki bookmaker oranları model yüzdelerinden ayrıdır."
         )
 
-        # V3.18: read-only link to the already locked pre-match odds ledger.
+        # V3.34: locked pre-match odds -> combined coupon odds -> virtual return panel.
+        # Read-only: this screen NEVER creates, refreshes or overwrites a locked odd.
+        total_odd = None
+        stake = None
         try:
             from coupon_odds_v318 import enrich_coupon, combined_odds
             coupon, odds_info = enrich_coupon(coupon)
-            st.markdown("#### 💰 Kilitli maç önü oranları")
+            st.markdown("#### 💰 V3.34 • Gerçek oranlı kupon hesabı")
             if odds_info.get("error"):
                 st.caption(odds_info["error"])
-            odds_view = coupon[["Maç","Pazar","Maç Önü Oran","Oran Kaynağı"]].copy()
-            odds_view["Maç Önü Oran"] = odds_view["Maç Önü Oran"].map(lambda x: "—" if pd.isna(x) else f"{float(x):.3f}")
+
+            odds_view = coupon[["Maç", "Pazar", "Maç Önü Oran", "Oran Kaynağı"]].copy()
+            odds_view["Durum"] = odds_view["Maç Önü Oran"].map(
+                lambda x: "🔒 Kilitli" if pd.notna(x) and float(x) >= 1.01 else "⏳ Oran bekleniyor"
+            )
+            odds_view["Maç Önü Oran"] = odds_view["Maç Önü Oran"].map(
+                lambda x: "—" if pd.isna(x) else f"{float(x):.3f}"
+            )
             odds_view["Oran Kaynağı"] = odds_view["Oran Kaynağı"].fillna("—")
             st.dataframe(odds_view, hide_index=True, use_container_width=True)
+
+            matched = int(odds_info.get("matched", 0))
+            total_legs = int(odds_info.get("total", len(coupon)))
             total_odd = combined_odds(coupon)
+            k1, k2, k3 = st.columns(3)
+            k1.metric("Kupon ayağı", total_legs)
+            k2.metric("Kilitli oran", f"{matched}/{total_legs}")
+            k3.metric("Toplam oran", f"{total_odd:.2f}" if total_odd is not None else "—")
+
             if total_odd is not None:
-                c1, c2 = st.columns(2)
-                c1.metric("Toplam gerçek kupon oranı", f"{total_odd:.2f}")
-                stake = c2.number_input("Örnek kupon tutarı (TL)", min_value=10.0, max_value=100000.0, value=100.0, step=10.0, key=f"v318_stake_{mode}")
-                st.metric("Olası brüt dönüş", f"{stake * total_odd:,.2f} TL")
-                st.caption("Brüt dönüş = kupon tutarı × kilitli oranların çarpımıdır; vergi/kesinti ve bahis kuralları dahil değildir. Kâr garantisi değildir.")
+                stake = st.number_input(
+                    "Sanal kupon tutarı (TL)", min_value=10.0, max_value=100000.0,
+                    value=100.0, step=10.0, key=f"v334_stake_{mode}"
+                )
+                gross_return = float(stake) * float(total_odd)
+                gross_profit = gross_return - float(stake)
+                r1, r2, r3 = st.columns(3)
+                r1.metric("Sanal tutar", f"{stake:,.2f} TL")
+                r2.metric("Olası brüt dönüş", f"{gross_return:,.2f} TL")
+                r3.metric("Olası brüt fark", f"{gross_profit:,.2f} TL")
+                st.success("Kupondaki tüm ayakların kilitli maç önü oranı bulundu; toplam oran sabit kayıtların çarpımıyla hesaplandı.")
+                st.caption(
+                    "Kilitli oranlar Supabase oran defterinden yalnızca okunur; bu panel oranı değiştirmez. "
+                    "Brüt dönüş ve brüt fark sanal hesaptır; vergi/kesinti ve bahis kuralları dahil değildir, kâr garantisi değildir."
+                )
             else:
-                st.info(f"{odds_info.get('matched',0)}/{odds_info.get('total',len(coupon))} ayakta kilitli gerçek oran bulundu. Toplam oran için tüm ayakların maç önü oranı gerekli.")
+                missing = max(total_legs - matched, 0)
+                st.info(f"{matched}/{total_legs} ayakta kilitli gerçek oran bulundu. {missing} ayak daha kilitlenmeden toplam kupon oranı ve dönüş hesabı yapılmayacak.")
         except Exception as exc:
-            st.warning("V3.18 oran görünümü geçici olarak hazırlanamadı: " + str(exc)[:160])
+            st.warning("V3.34 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
 
         # Authenticated users persist the exact coupon, including locked odds when available.
         try:
@@ -1780,4 +1808,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.33 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.34 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
