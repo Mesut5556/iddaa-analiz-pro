@@ -1,4 +1,4 @@
-"""V3.24 weekly forward-performance report.
+"""V3.25 weekly forward-performance report.
 Read-only reporting layer; does not alter decisions, odds locking or settlement.
 """
 import pandas as pd
@@ -29,7 +29,7 @@ def _week_start(s):
 
 
 def render(all_ana):
-    st.markdown("### 📅 Haftalık gerçek performans • V3.24")
+    st.markdown("### 📅 Bu Haftanın Performansı • V3.25")
     st.caption(
         "Hafta Pazartesi–Pazar olarak hesaplanır. Yalnızca 13.10.2026'dan sonra gerçekten sonuçlanmış "
         "ANA SEÇİMLER rapora girer; bekleyen maçlar isabet hesabına katılmaz."
@@ -37,7 +37,12 @@ def render(all_ana):
 
     live = _prepare(all_ana)
     if live.empty or "Doğru" not in live.columns:
-        st.info("Henüz haftalık rapora girecek sonuçlanmış ANA SEÇİM yok. İlk maçlar bittikçe bu bölüm otomatik dolacak.")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Bu hafta sonuçlanan", 0)
+        c2.metric("Bildi", 0)
+        c3.metric("Bilemedi", 0)
+        c4.metric("Haftalık isabet", "—")
+        st.info("Henüz bu hafta sonuçlanmış ANA SEÇİM yok. İlk maçlar bittikçe bu bölüm otomatik dolacak.")
         return
 
     live["Hafta başlangıcı"] = _week_start(live["Tarih"])

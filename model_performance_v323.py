@@ -1,4 +1,4 @@
-"""V3.24 forward model performance dashboard.
+"""V3.25 forward model performance dashboard.
 Read-only reporting layer. Adds historical backtest vs live forward comparison.
 Does not alter decision, odds-lock, coupon or settlement logic.
 """
@@ -32,10 +32,10 @@ def _summary(df, group_cols):
 
 
 def render(matches, run_final_decision_backtest, build_coupon_candidates, next7, completed):
-    st.subheader("📈 Model Performans Merkezi • V3.24")
+    st.subheader("📈 Model Performans Merkezi • V3.25")
     st.caption(
         "13.10.2026'dan itibaren üretilen ANA SEÇİMLERİN gerçek ileriye dönük performansını izler. "
-        "V3.24 ayrıca takip başlangıcından ÖNCEKİ walk-forward backtest ile canlı sonuçları yan yana gösterir. "
+        "V3.25 ayrıca takip başlangıcından ÖNCEKİ walk-forward backtest ile canlı sonuçları yan yana gösterir. "
         "Bu ekran yalnızca raporlama yapar; karar motoru, oran kilitleme ve sonuçlandırma mantığını değiştirmez."
     )
 

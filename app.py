@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.24</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.25</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1128,7 +1128,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.24")
+    st.subheader("🎟️ Kupon Merkezi • V3.25")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1153,10 +1153,22 @@ elif menu == "🎟️ Kupon Merkezi":
         st.warning("Bu hafta seçtiğin profil için yeterince güçlü doğrulanmış sinyal yok. Motor kuponu zorla doldurmadı: PAS.")
     else:
         st.markdown("### Bu Haftanın Otomatik Kuponu")
-        show = coupon.copy()
-        show["Tarih"] = show["Tarih"].dt.strftime("%d.%m.%Y %H:%M")
-        show["Model %"] = show["Model %"].map(lambda x: f"%{x:.1f}")
-        st.dataframe(show[["Tarih","Maç","Pazar Grubu","Pazar","Model %","Backtest %","Destek"]], hide_index=True, use_container_width=True)
+        # V3.25: mobilde boş görünen Arrow/DataFrame hücrelerini önlemek için
+        # kupon tablosunu yalnızca ekranda gösterilecek sade değerlerle yeniden kuruyoruz.
+        coupon_rows = []
+        for _, row in coupon.iterrows():
+            dt = pd.to_datetime(row.get("Tarih"), errors="coerce")
+            coupon_rows.append({
+                "Tarih": dt.strftime("%d.%m.%Y %H:%M") if not pd.isna(dt) else "—",
+                "Maç": str(row.get("Maç", "—")),
+                "Pazar Grubu": str(row.get("Pazar Grubu", "—")),
+                "Pazar": str(row.get("Pazar", "—")),
+                "Model %": f"%{float(row.get('Model %', 0)):.1f}",
+                "Backtest %": round(float(row.get("Backtest %", 0)), 1),
+                "Destek": int(row.get("Destek", 0)),
+            })
+        show = pd.DataFrame(coupon_rows)
+        st.dataframe(show, hide_index=True, use_container_width=True)
 
         probs = coupon["Model %"].astype(float) / 100.0
         combined = 100.0
