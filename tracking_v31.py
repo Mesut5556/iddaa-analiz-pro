@@ -1,4 +1,4 @@
-"""V3.9.3 - Kalıcı Supabase oran defteri ve otomatik sonuçlandırma."""
+"""V3.9.4 - Kalıcı Supabase oran defteri ve otomatik sonuçlandırma."""
 import io
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -41,11 +41,11 @@ def _restore(upload):
 
 def render(open_candidates, settled):
     _init()
-    st.markdown('## 💾 V3.9.3 • Maç öncesi oran defteri')
+    st.markdown('## 💾 V3.9.4 • Maç öncesi oran defteri')
     st.caption('Karar motoru değişmedi. Oran kayıtları Supabase kalıcı veritabanına yazılır; CSV ayrıca taşınabilir yedektir.')
     ok, msg = cloud_status()
     (st.success if ok else st.warning)(('☁️ ' if ok else '⚠️ ') + msg)
-    # V3.9.3: test/diagnostic UI removed; cloud_status remains as the normal health check.
+    # V3.9.4: test/diagnostic UI removed; cloud_status remains as the normal health check.
     uploaded = st.file_uploader('📤 Önceki oran defteri CSV dosyanı geri yükle', type=['csv'], key='v31_restore')
     if uploaded is not None and st.button('CSV kayıtlarını yükle', key='v31_restore_btn'):
         try:
@@ -132,4 +132,4 @@ def render(open_candidates, settled):
         c4.metric('Sanal ROI',f'%{100*pnl/wagered:+.1f}' if wagered else '—')
     else:
         st.info('Oranı kaydedilmiş maçlar sonuçlandığında sanal ROI burada hesaplanacak.')
-    st.info('V3.9.3: Supabase bağlıysa kilitli oranlar deploy/restart sonrasında da korunur. Maç sonucu geldiğinde kayıt otomatik sonuçlandırılır ve sanal ROI hesaplanır. CSV yalnızca ek yedektir.')
+    st.info('V3.9.4: Supabase bağlıysa kilitli oranlar deploy/restart sonrasında da korunur. Maç sonucu geldiğinde kayıt otomatik sonuçlandırılır ve sanal ROI hesaplanır. CSV yalnızca ek yedektir.')

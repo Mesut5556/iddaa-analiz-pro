@@ -1,4 +1,4 @@
-"""V3.3: One-match, read-only OddsPapi double-chance verification."""
+"""V3.9.4: One-match, read-only OddsPapi double-chance verification."""
 import pandas as pd
 import streamlit as st
 
@@ -62,7 +62,7 @@ def _extract(odds, markets, selection):
 
 
 def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_fixture):
-    st.markdown('### 🔎 V3.3 • Çifte Şans otomatik oran testi')
+    st.markdown('### 🔎 V3.9.4 • Çifte Şans otomatik oran testi')
     st.caption('Yalnızca seçtiğin TEK maç için, düğmeye basınca OddsPapi sorgulanır. Oranlar otomatik kaydedilmez; önce pazar eşleşmesini doğruluyoruz. API kotası kullanılır.')
     if not api_key:
         st.warning('ODDSPAPI_KEY Streamlit Secrets içinde bulunamadı.')

@@ -1,4 +1,4 @@
-"""V3.9.2 persistent odds ledger. Supabase is primary; verified read/write diagnostics included."""
+"""V3.9.4.4 persistent odds ledger. Supabase is primary; verified read/write diagnostics included."""
 import json
 from pathlib import Path
 from datetime import datetime, timezone
@@ -248,7 +248,7 @@ def cloud_write_probe():
     row = {
         'match_key': probe_key, 'match_date': now, 'home_team': 'WRITE', 'away_team': 'PROBE',
         'market': 'DIAGNOSTIC', 'selection': 'TEST', 'model_pct': 0, 'backtest_pct': 0,
-        'odds': 1.0, 'bookmaker': 'V3.9.2', 'stake': 1.0, 'locked_at': now,
+        'odds': 1.0, 'bookmaker': 'V3.9.4.4', 'stake': 1.0, 'locked_at': now,
         'status': 'TEST', 'home_score': None, 'away_score': None, 'is_hit': None,
         'profit_loss': None, 'settled_at': None
     }
