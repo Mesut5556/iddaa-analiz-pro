@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.25</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.25.1</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1128,7 +1128,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.25")
+    st.subheader("🎟️ Kupon Merkezi • V3.25.1")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1522,8 +1522,15 @@ elif menu == "🧪 Backtest":
     st.markdown("## Temel Poisson Backtesti")
 
     if not completed.empty:
-        season_counts = completed.groupby("season").size().reset_index(name="Oynanmış Maç")
-        season_counts.columns = ["Sezon", "Oynanmış Maç"]
+        # V3.25.1: Streamlit/Arrow mobil görünümünde groupby çıktısının
+        # boş hücreler halinde çizilmesini önlemek için sade Python tipleriyle
+        # temiz bir gösterim DataFrame'i oluşturuyoruz. Hesaplamaya dokunmaz.
+        season_series = completed.groupby("season", dropna=False).size()
+        season_rows = []
+        for season_name, match_count in season_series.items():
+            label = "Bilinmeyen" if pd.isna(season_name) else str(season_name)
+            season_rows.append({"Sezon": label, "Oynanmış Maç": int(match_count)})
+        season_counts = pd.DataFrame(season_rows, columns=["Sezon", "Oynanmış Maç"])
         st.dataframe(season_counts, hide_index=True, use_container_width=True)
 
     bt = run_backtest(completed)
