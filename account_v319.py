@@ -1,4 +1,4 @@
-"""V3.20 account + immutable coupon financial snapshot + automatic coupon settlement.
+"""V3.21 account + immutable coupon financial snapshot + automatic coupon settlement + portfolio finance.
 Uses Supabase Auth/RLS. Coupon settlement only uses finished fixtures already supplied by app.py.
 """
 import json
@@ -255,7 +255,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.20")
+    st.subheader("👤 Hesabım • V3.21")
     st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. Karar motoru ve V3.16 sonuçlandırma mantığı değiştirilmedi.")
     user = current_user()
     if not user:
@@ -286,7 +286,7 @@ def render_account(matches=None):
     if matches is not None:
         try:
             info=settle_saved_coupons(matches)
-            if info["updated"]: st.success(f"V3.20: {info['updated']} kupon kaydı yeni maç sonuçlarıyla güncellendi.")
+            if info["updated"]: st.success(f"V3.21: {info['updated']} kupon kaydı yeni maç sonuçlarıyla güncellendi.")
         except Exception as exc: st.warning("Kupon sonuçlandırma geçici olarak tamamlanamadı: "+str(exc)[:160])
 
     rows=list_coupons()
@@ -294,6 +294,48 @@ def render_account(matches=None):
     total=len(rows); open_n=sum(r.get("status")=="ACIK" for r in rows); won=sum(r.get("status")=="KAZANDI" for r in rows); lost=sum(r.get("status")=="KAYBETTI" for r in rows)
     a,b,c,d=st.columns(4)
     a.metric("Toplam", total); b.metric("Açık", open_n); c.metric("Kazandı", won); d.metric("Kaybetti", lost)
+
+    # V3.21: portfolio-level finance is rebuilt only from immutable save-time snapshots.
+    total_staked = 0.0
+    settled_staked = 0.0
+    realized_gross_total = 0.0
+    realized_net_total = 0.0
+    financial_coupon_count = 0
+    settled_financial_count = 0
+    for row in rows:
+        legs_fin = row.get("legs") if isinstance(row.get("legs"), list) else []
+        if not legs_fin or not isinstance(legs_fin[0], dict):
+            continue
+        meta_fin = legs_fin[0]
+        try:
+            stake_fin = float(meta_fin.get("V3.19 Kupon Tutarı")) if meta_fin.get("V3.19 Kupon Tutarı") is not None else None
+        except (TypeError, ValueError):
+            stake_fin = None
+        if stake_fin is None:
+            continue
+        financial_coupon_count += 1
+        total_staked += stake_fin
+        if row.get("status") in ("KAZANDI", "KAYBETTI"):
+            try:
+                net_fin = float(meta_fin.get("V3.20 Net TL")) if meta_fin.get("V3.20 Net TL") is not None else None
+                gross_fin = float(meta_fin.get("V3.20 Gerçekleşen Brüt Dönüş")) if meta_fin.get("V3.20 Gerçekleşen Brüt Dönüş") is not None else None
+            except (TypeError, ValueError):
+                net_fin, gross_fin = None, None
+            if net_fin is not None:
+                settled_financial_count += 1
+                settled_staked += stake_fin
+                realized_net_total += net_fin
+                realized_gross_total += gross_fin or 0.0
+
+    st.markdown("### 💰 Finansal performans")
+    f1,f2,f3,f4=st.columns(4)
+    f1.metric("Kayıtlı toplam tutar", f"{total_staked:,.2f} TL" if financial_coupon_count else "—")
+    f2.metric("Sonuçlanan yatırım", f"{settled_staked:,.2f} TL" if settled_financial_count else "—")
+    f3.metric("Gerçekleşen dönüş", f"{realized_gross_total:,.2f} TL" if settled_financial_count else "—")
+    f4.metric("Net kâr / zarar", f"{realized_net_total:+,.2f} TL" if settled_financial_count else "—")
+    roi = (realized_net_total / settled_staked * 100.0) if settled_staked > 0 else None
+    st.metric("Sonuçlanan kupon ROI", f"%{roi:+.2f}" if roi is not None else "—")
+    st.caption("ROI yalnızca sonucu kesinleşmiş ve kayıt anında tutarı/oranı dondurulmuş kuponlardan hesaplanır. Açık kuponlar ROI'ye dahil edilmez.")
 
     st.markdown("### 🎟️ Kayıtlı kuponlarım")
     if not rows:
