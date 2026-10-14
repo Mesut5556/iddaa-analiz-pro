@@ -959,7 +959,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("📊 Maç Analiz Merkezi • V3.31")
+    st.subheader("📊 Maç Analiz Merkezi • V3.32")
     st.caption("Tek ekranda form, saha performansı, gol eğilimleri, Poisson modeli, güven filtresi ve isteğe bağlı canlı 1.5 gol oranı.")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
@@ -1089,6 +1089,56 @@ elif menu == "📊 Maç Analizi":
                 else:
                     st.warning("Tüm pazarlar: PAS. Model sinyali var olsa bile tarihsel doğrulama/bağlam yeterli değil.")
             st.caption("Backtest yüzdesi sonuç sınıflandırma isabetidir; bookmaker oranı veya kârlılık testi değildir.")
+
+            # V3.32: mevcut V3.14 kararını değiştirmeden tek kutuda özetle.
+            st.markdown("### 🎯 V3.32 Nihai Karar Özeti")
+            st.caption("Bu kutu yalnızca V3.14 Nihai Karar Motorunun yukarıda ürettiği sonucu özetler; yeni karar üretmez ve eşikleri değiştirmez.")
+            if final_decisions.empty:
+                st.warning("⛔ PAS • Değerlendirilebilir pazar bulunamadı.")
+            else:
+                ana_rows = final_decisions[final_decisions["Karar"] == "ANA SEÇİM"]
+                alt_rows = final_decisions[final_decisions["Karar"] == "ALTERNATİF"]
+                chosen = ana_rows.iloc[0] if not ana_rows.empty else (alt_rows.iloc[0] if not alt_rows.empty else None)
+                if chosen is None:
+                    st.warning("⛔ PAS • V3.14 motoru bu maç için oynanabilir seçim üretmedi.")
+                else:
+                    karar = str(chosen["Karar"])
+                    pazar = str(chosen["Pazar"])
+                    secim = str(chosen["Seçim"])
+                    model_pct = float(chosen["Model %"])
+                    bt_pct = float(chosen["Backtest %"])
+                    destek = int(chosen["Destek"])
+                    bt_n = int(chosen["Backtest n"])
+
+                    locked_odd = None
+                    locked_source = None
+                    try:
+                        from coupon_odds_v318 import enrich_coupon
+                        one = pd.DataFrame([{
+                            "Tarih": before,
+                            "Maç": f"{home} - {away}",
+                            "Pazar": secim,
+                        }])
+                        one, _odd_info = enrich_coupon(one)
+                        if not one.empty and pd.notna(one.iloc[0].get("Maç Önü Oran")):
+                            locked_odd = float(one.iloc[0]["Maç Önü Oran"])
+                            locked_source = str(one.iloc[0].get("Oran Kaynağı") or "—")
+                    except Exception:
+                        pass
+
+                    if karar == "ANA SEÇİM":
+                        st.success(f"✅ ANA SEÇİM • {pazar} → {secim}")
+                    else:
+                        st.info(f"ℹ️ ALTERNATİF • {pazar} → {secim}")
+                    q1,q2,q3,q4 = st.columns(4)
+                    q1.metric("Model", f"%{model_pct:.1f}")
+                    q2.metric("Backtest", f"%{bt_pct:.1f}", help=f"Geçmiş örnek sayısı: {bt_n}")
+                    q3.metric("Destek", str(destek))
+                    q4.metric("Kilitli oran", f"{locked_odd:.3f}" if locked_odd is not None else "—")
+                    if locked_odd is not None:
+                        st.caption(f"🔒 Maç önü oranı daha önce kilitlenmiş: {locked_odd:.3f} • Kaynak: {locked_source}. Bu kutu oranı değiştirmez.")
+                    else:
+                        st.caption("Bu seçim için kilitli maç önü oranı bulunamadı. Oran uydurulmaz ve burada yeni oran kilitlenmez.")
 
             st.markdown("### 💹 OddsPapi • seçili maçın 1.5 gol oranı")
             st.caption("Canlı oran sorgusu isteğe bağlıdır ve API kotası kullanır. Oran yoksa değer uydurulmaz.")
