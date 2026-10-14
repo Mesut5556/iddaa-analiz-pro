@@ -1,4 +1,4 @@
-"""V3.41 account + immutable coupon snapshot + guarded automatic settlement.
+"""V3.42 account + immutable coupon snapshot + guarded automatic settlement + duplicate-safe saving.
 Uses Supabase Auth/RLS. Settlement only consumes finished fixtures supplied by app.py.
 V3.41 does not alter the V3.14 decision engine or any locked pre-match odds.
 """
@@ -7,6 +7,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import unicodedata
+import hashlib
 from datetime import datetime
 
 import pandas as pd
@@ -97,13 +98,44 @@ def coupon_payload(coupon):
     return [{str(k): _json_safe(v) for k, v in r.to_dict().items()} for _, r in coupon.iterrows()]
 
 
+def _coupon_fingerprint_from_legs(legs):
+    """Stable identity for a logical coupon; ignores title/stake/odds metadata."""
+    keys = []
+    for leg in legs or []:
+        match = _norm(leg.get("Maç") or leg.get("Mac") or "")
+        market_group = _norm(leg.get("Pazar Grubu") or "")
+        pick = _norm(leg.get("Pazar") or leg.get("Seçim") or "")
+        dt = pd.to_datetime(leg.get("Tarih"), errors="coerce")
+        date_key = dt.strftime("%Y-%m-%dT%H:%M") if pd.notna(dt) else str(leg.get("Tarih") or "")
+        keys.append(f"{date_key}|{match}|{market_group}|{pick}")
+    raw = "||".join(sorted(keys))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest() if raw else ""
+
+
+def _existing_coupon_by_fingerprint(fingerprint):
+    if not fingerprint:
+        return None
+    for row in list_coupons():
+        if _coupon_fingerprint_from_legs(row.get("legs") or []) == fingerprint:
+            return row
+    return None
+
+
 def save_coupon(coupon, mode, title="", stake=None, total_odds=None):
     user, token = current_user(), access_token()
     if not user or not token: raise ValueError("Kupon kaydetmek için önce Hesabım bölümünden giriş yap.")
     if coupon is None or coupon.empty: raise ValueError("Kaydedilecek kupon boş.")
     legs = coupon_payload(coupon)
-    # V3.20: financial snapshot is frozen inside the coupon payload at save time.
-    # This is backwards-compatible with the existing saved_coupons schema/RLS.
+
+    # V3.42: the same logical coupon may not be saved twice for the same user.
+    # Identity uses kickoff + match + market group + pick, not title/stake/odds.
+    fingerprint = _coupon_fingerprint_from_legs(legs)
+    existing = _existing_coupon_by_fingerprint(fingerprint)
+    if existing:
+        return {"_v342_duplicate": True, "id": existing.get("id"), "title": existing.get("title"),
+                "status": existing.get("status"), "created_at": existing.get("created_at")}
+
+    # Financial snapshot remains frozen at save time.
     if legs:
         try:
             stake_value = float(stake) if stake is not None else None
@@ -119,12 +151,18 @@ def save_coupon(coupon, mode, title="", stake=None, total_odds=None):
             "V3.19 Olası Brüt Dönüş": (stake_value * total_value) if stake_value is not None and total_value is not None else None,
             "V3.19 Oran Kilidi": datetime.now().astimezone().isoformat(),
             "V3.20 Finansal Snapshot": True,
+            "V3.42 Kupon Parmak İzi": fingerprint,
         }
         legs[0].update(meta)
     body = {"user_id": user["id"], "title": (title or f"{mode} • {datetime.now().strftime('%d.%m.%Y')}")[:120],
             "mode": str(mode)[:50], "legs": legs, "status": "ACIK"}
     out = _request("/rest/v1/saved_coupons", method="POST", token=token, body=body, prefer="return=representation")
-    return out[0] if isinstance(out, list) and out else body
+    saved = out[0] if isinstance(out, list) and out else body
+    saved["_v342_duplicate"] = False
+    # Read-after-write verification: confirms it is visible through the user's RLS-scoped list.
+    saved_id = saved.get("id")
+    saved["_v342_verified"] = bool(saved_id and any(str(r.get("id")) == str(saved_id) for r in list_coupons()))
+    return saved
 
 
 def list_coupons():
@@ -300,7 +338,7 @@ def _leg_status(leg):
 
 def render_account(matches=None):
     st.subheader("👤 Hesabım • V3.41")
-    st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. V3.41 güvenli sonuçlandırma katmanı; V3.14 karar motoruna ve kilitli oranlara dokunmaz.")
+    st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. V3.42 güvenli kayıt/sonuçlandırma katmanı; V3.14 karar motoruna ve kilitli oranlara dokunmaz.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
@@ -333,14 +371,14 @@ def render_account(matches=None):
         try:
             settlement_info = settle_saved_coupons(matches)
             if settlement_info["updated"]:
-                st.success(f"V3.41: {settlement_info['updated']} kupon kaydı yeni maç sonuçlarıyla güncellendi.")
+                st.success(f"V3.42: {settlement_info['updated']} kupon kaydı yeni maç sonuçlarıyla güncellendi.")
         except Exception as exc:
             settlement_error = str(exc)[:160]
             st.warning("Kupon sonuçlandırma geçici olarak tamamlanamadı: " + settlement_error)
 
     rows=list_coupons()
 
-    # V3.41: visible, non-invasive settlement audit panel. This does not create
+    # V3.42: visible, non-invasive settlement audit panel. This does not create
     # picks, alter frozen odds, or change the V3.14 decision engine.
     st.markdown("### 🔄 Otomatik sonuç kontrolü")
     open_after = sum(r.get("status") == "ACIK" for r in rows)
@@ -359,7 +397,7 @@ def render_account(matches=None):
         st.success("Açık kupon bulunmuyor.")
     if st.button("🔄 Sonuçları şimdi yeniden kontrol et", use_container_width=True, key="v341_recheck"):
         st.rerun()
-    st.caption("V3.41 kontrolü yalnızca kesinleşmiş fikstür/skor verisini okur. Kayıtlı maç önü oranı, kupon tutarı ve seçimler değiştirilmez.")
+    st.caption("V3.42 kontrolü yalnızca kesinleşmiş fikstür/skor verisini okur. Kayıtlı maç önü oranı, kupon tutarı ve seçimler değiştirilmez.")
 
     st.markdown("### 📊 Kupon performansım")
     total=len(rows); open_n=sum(r.get("status")=="ACIK" for r in rows); won=sum(r.get("status")=="KAZANDI" for r in rows); lost=sum(r.get("status")=="KAYBETTI" for r in rows)
@@ -547,5 +585,5 @@ def render_account(matches=None):
                         model=row.get("Model %","—")
                         backtest=row.get("Backtest %","—")
                         st.caption(f"Kaynak: {source} • Model: %{model} • Backtest: %{backtest}")
-                st.caption("V3.41: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
+                st.caption("V3.42: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
         st.divider()

@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı • V3.41</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı • V3.42</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1212,7 +1212,7 @@ elif menu == "🛡️ Takım Analizi":
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.41")
+    st.subheader("🎟️ Kupon Merkezi • V3.42")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1296,7 +1296,7 @@ elif menu == "🎟️ Kupon Merkezi":
         try:
             from coupon_odds_v318 import enrich_coupon, combined_odds
             coupon, odds_info = enrich_coupon(coupon)
-            st.markdown("#### 💰 V3.41 • Gerçek oranlı kupon hesabı")
+            st.markdown("#### 💰 V3.42 • Gerçek oranlı kupon hesabı")
             if odds_info.get("error"):
                 st.caption(odds_info["error"])
 
@@ -1338,16 +1338,25 @@ elif menu == "🎟️ Kupon Merkezi":
                 missing = max(total_legs - matched, 0)
                 st.info(f"{matched}/{total_legs} ayakta kilitli gerçek oran bulundu. {missing} ayak daha kilitlenmeden toplam kupon oranı ve dönüş hesabı yapılmayacak.")
         except Exception as exc:
-            st.warning("V3.41 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
+            st.warning("V3.42 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
 
         # Authenticated users persist the exact coupon, including locked odds when available.
         try:
             from account_v341 import current_user, save_coupon
             if current_user():
                 save_title = st.text_input("Kupon adı (isteğe bağlı)", key=f"v317_title_{mode}")
-                if st.button("💾 Bu kuponu hesabıma kaydet", key=f"v317_save_{mode}", use_container_width=True):
-                    save_coupon(coupon, mode, save_title, stake=stake if total_odd is not None else None, total_odds=total_odd)
-                    st.success("Kupon hesabına kalıcı olarak kaydedildi.")
+                if st.button("💾 Bu kuponu hesabıma kaydet", key=f"v342_save_{mode}", use_container_width=True):
+                    saved = save_coupon(coupon, mode, save_title, stake=stake if total_odd is not None else None, total_odds=total_odd)
+                    if saved.get("_v342_duplicate"):
+                        st.warning(f"Bu kupon zaten hesabında kayıtlı: {saved.get('title') or 'Kayıtlı kupon'}. İkinci kez kaydedilmedi.")
+                    elif saved.get("_v342_verified"):
+                        st.success("✅ Kupon hesabına kaydedildi ve Hesabım kayıtlarında doğrulandı.")
+                    else:
+                        st.success("Kupon kaydetme isteği tamamlandı.")
+                        st.info("Kayıt doğrulaması henüz listede görünmedi; sayfa yenilendiğinde Hesabım bölümünden kontrol edebilirsin.")
+                if st.button("👤 Hesabımda kayıtlı kuponları aç", key=f"v342_account_{mode}", use_container_width=True):
+                    st.session_state["main_menu"] = "👤 Hesabım"
+                    st.rerun()
             else:
                 st.info("💾 Kuponu kalıcı kaydetmek için 👤 Hesabım bölümünden giriş yap.")
         except Exception as exc:
