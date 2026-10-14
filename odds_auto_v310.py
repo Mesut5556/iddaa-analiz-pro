@@ -1,4 +1,4 @@
-"""V3.10: verified OddsPapi double-chance odds -> pre-match locked tracking ledger."""
+"""V3.12: safe automatic OddsPapi double-chance locking with session cooldown."""
 import pandas as pd
 import streamlit as st
 from storage_v395 import load_records, save_records
@@ -48,7 +48,7 @@ def _fetch_one(row, dc, fixtures, api_key, odds_papi_get, find_exact_fixture):
         return None, 'Maç başlamış.'
     selection = str(row['Pazar'])
     if selection not in ('1X', 'X2'):
-        return None, 'V3.10 otomatik kayıt şu an yalnızca 1X/X2 için açık.'
+        return None, 'V3.12 otomatik kayıt şu an yalnızca 1X/X2 için açık.'
     fid = find_exact_fixture(row, fixtures)
     if not fid:
         return None, 'Takım/saat kesin eşleşmedi.'
@@ -80,10 +80,24 @@ def _lock(row, found, stake=100.0):
     return True, f"{q['Oran']:.2f} • {q['Kaynak']}"
 
 
+def _run_targets(available, targets, stake, api_key, odds_papi_get, odds_papi_tournament, find_exact_fixture):
+    dc, fixtures = _prepare_context(available.loc[targets], api_key, odds_papi_get, odds_papi_tournament)
+    report = []
+    for idx in targets:
+        row = available.loc[idx]
+        found, err = _fetch_one(row, dc, fixtures, api_key, odds_papi_get, find_exact_fixture)
+        if err:
+            report.append({'Maç': row['Maç'], 'Seçim': row['Pazar'], 'Durum': 'KAYDEDİLMEDİ', 'Oran/Kaynak': err})
+            continue
+        ok, msg = _lock(row, found, stake)
+        report.append({'Maç': row['Maç'], 'Seçim': row['Pazar'], 'Durum': 'KİLİTLENDİ' if ok else 'KAYDEDİLMEDİ', 'Oran/Kaynak': msg})
+    return report
+
+
 def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_fixture):
     _ensure_store()
-    st.markdown('### 🤖 V3.10 • Otomatik oran kilitleme')
-    st.caption('Doğrulanmış 90 dakika Çifte Şans oranını OddsPapi’den maç başlamadan alır ve oran defterine kilitler. Aynı seçim sonradan değiştirilmez. API kotası kullanılır.')
+    st.markdown('### 🤖 V3.12 • Güvenli otomatik oran kilitleme')
+    st.caption('Sayfa açıldığında bekleyen 1X/X2 seçimlerini kontrollü tarar. Doğrulanmış oran bulunursa Supabase’e yalnızca bir kez kilitler; aynı seçim sonradan değiştirilmez. API kotası korunur.')
     if not api_key:
         st.warning('ODDSPAPI_KEY Streamlit Secrets içinde bulunamadı.')
         return
@@ -104,6 +118,25 @@ def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_
         st.success('Açık 1X/X2 seçimlerinin tamamı oran defterinde kilitli.')
         return
 
+    # V3.12: automatic scan at most once per 30 minutes in the active Streamlit session.
+    # Only future selections are queried; already locked keys never consume another odds call.
+    last_scan = st.session_state.get('v312_last_auto_scan')
+    due = last_scan is None or (now - last_scan) >= pd.Timedelta(minutes=30)
+    if due:
+        st.session_state['v312_last_auto_scan'] = now
+        try:
+            with st.spinner('V3.12 otomatik tarama: açık seçimlerin doğrulanmış oranları kontrol ediliyor...'):
+                auto_report = _run_targets(available, pending, 100.0, api_key, odds_papi_get, odds_papi_tournament, find_exact_fixture)
+            locked_now = sum(r['Durum'] == 'KİLİTLENDİ' for r in auto_report)
+            if locked_now:
+                st.success(f'V3.12 otomatik tarama: {locked_now} oran Supabase’e tek seferlik kilitlendi.')
+                st.dataframe(pd.DataFrame(auto_report), hide_index=True, use_container_width=True)
+                st.rerun()
+            else:
+                st.caption('V3.12 otomatik tarama tamamlandı; şu anda güvenle kilitlenebilen yeni oran bulunmadı. 30 dakika dolmadan tekrar API taraması yapılmaz.')
+        except Exception as exc:
+            st.warning('V3.12 otomatik tarama güvenli biçimde atlandı: ' + str(exc)[:160])
+
     labels = {i: f"{available.loc[i,'Maç']} • {available.loc[i,'Pazar']}" for i in pending}
     selected = st.selectbox('Otomatik oran alınacak seçim', pending, format_func=lambda i: labels[i], key='v34_one')
     stake = st.number_input('Sanal takip tutarı (TL)', min_value=1.0, max_value=100000.0, value=100.0, step=10.0, key='v34_stake')
@@ -117,20 +150,11 @@ def render(candidates, api_key, odds_papi_get, odds_papi_tournament, find_exact_
     targets = [selected] if one else pending
     try:
         with st.spinner('OddsPapi doğrulanıyor ve maç öncesi oranlar alınıyor...'):
-            dc, fixtures = _prepare_context(available.loc[targets], api_key, odds_papi_get, odds_papi_tournament)
-            report = []
-            for idx in targets:
-                row = available.loc[idx]
-                found, err = _fetch_one(row, dc, fixtures, api_key, odds_papi_get, find_exact_fixture)
-                if err:
-                    report.append({'Maç': row['Maç'], 'Seçim': row['Pazar'], 'Durum': 'KAYDEDİLMEDİ', 'Oran/Kaynak': err})
-                    continue
-                ok, msg = _lock(row, found, stake)
-                report.append({'Maç': row['Maç'], 'Seçim': row['Pazar'], 'Durum': 'KİLİTLENDİ' if ok else 'KAYDEDİLMEDİ', 'Oran/Kaynak': msg})
+            report = _run_targets(available, targets, stake, api_key, odds_papi_get, odds_papi_tournament, find_exact_fixture)
         st.dataframe(pd.DataFrame(report), hide_index=True, use_container_width=True)
         if any(r['Durum']=='KİLİTLENDİ' for r in report):
             st.success('Maç öncesi oran defterine kilitlendi. Kayıt Supabase’e kalıcı olarak yazıldı; CSV ayrıca yedek olarak indirilebilir.')
         if any(r['Durum']=='KAYDEDİLMEDİ' for r in report):
             st.warning('Bazı seçimler güvenli eşleşme/fiyat bulunamadığı için kaydedilmedi; oran uydurulmadı.')
     except Exception as exc:
-        st.error('V3.10 otomatik oran hatası: ' + str(exc)[:180])
+        st.error('V3.12 otomatik oran hatası: ' + str(exc)[:180])
