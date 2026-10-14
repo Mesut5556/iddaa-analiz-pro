@@ -58,7 +58,7 @@ def render(completed, selected_match, prediction_model):
     hs, ass = _stats(h10, home), _stats(a10, away)
     hvs, avs = _stats(hh, home), _stats(aa, away)
 
-    st.markdown("### 🆚 Maç + Takım Karşılaştırması • V3.31")
+    st.markdown("### 🆚 Maç + Takım Karşılaştırması • V3.39")
     st.caption("İki takımın maç öncesi formu, saha gücü, gol eğilimleri ve mevcut Poisson tahmini aynı panelde. Yalnızca maçtan önceki veriler kullanılır.")
 
     c1,c2 = st.columns(2)

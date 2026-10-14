@@ -53,7 +53,7 @@ def _display_matches(df, team, limit=10):
 
 
 def render(matches, completed, current_season, future, league_table_before):
-    st.subheader("🛡️ Takım Analiz Merkezi • V3.30")
+    st.subheader("🛡️ Takım Analiz Merkezi • V3.39")
     st.caption("Takımın formunu, iç/deplasman performansını, gol eğilimlerini, lig konumunu ve yaklaşan maçlarını tek ekranda gösterir. Karar motorunu değiştirmez.")
     if matches is None or matches.empty:
         st.info("Takım analizi için veri yok."); return

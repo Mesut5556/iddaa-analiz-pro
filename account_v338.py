@@ -255,7 +255,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.38")
+    st.subheader("👤 Hesabım • V3.39")
     st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. Karar motoru ve V3.16 sonuçlandırma mantığı değiştirilmedi.")
     user = current_user()
     if not user:
@@ -476,5 +476,5 @@ def render_account(matches=None):
                         model=row.get("Model %","—")
                         backtest=row.get("Backtest %","—")
                         st.caption(f"Kaynak: {source} • Model: %{model} • Backtest: %{backtest}")
-                st.caption("V3.38: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
+                st.caption("V3.39: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
         st.divider()
