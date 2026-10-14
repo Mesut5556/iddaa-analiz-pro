@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.21</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon • V3.22</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -935,7 +935,7 @@ def extract_market_odds(data, market):
                         pass
     return max(found, key=lambda x: x[0]) if found else None
 
-menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
+menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","📈 Model Performansı","🧪 Backtest","⚙️ Ayarlar"],horizontal=True)
 
 if menu == "🏠 Ana Sayfa":
     st.subheader("Önümüzdeki 15 Günün Maçları")
@@ -1128,7 +1128,7 @@ elif menu == "📊 Maç Analizi":
             st.warning("Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir; oran karşılaştırması kâr garantisi veya bahis tavsiyesi değildir.")
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.21")
+    st.subheader("🎟️ Kupon Merkezi • V3.22")
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1458,6 +1458,10 @@ elif menu == "📒 Canlı Takip":
         "Bu takip sistemi bahis tavsiyesi değildir. Geçmiş isabet gelecekteki sonucu garanti etmez. "
         "Supabase bağlıysa oran kayıtları kalıcıdır; CSV yalnızca ek yedektir."
     )
+
+elif menu == "📈 Model Performansı":
+    from model_performance_v322 import render as render_model_performance
+    render_model_performance(matches, run_final_decision_backtest, build_coupon_candidates, next7, completed)
 
 elif menu == "🧪 Backtest":
     st.subheader("🧪 Çok Sezonlu Backtest • V3.14")
