@@ -1,4 +1,4 @@
-"""V3.23 forward model performance dashboard.
+"""V3.24 forward model performance dashboard.
 Read-only reporting layer. Adds historical backtest vs live forward comparison.
 Does not alter decision, odds-lock, coupon or settlement logic.
 """
@@ -32,10 +32,10 @@ def _summary(df, group_cols):
 
 
 def render(matches, run_final_decision_backtest, build_coupon_candidates, next7, completed):
-    st.subheader("📈 Model Performans Merkezi • V3.23")
+    st.subheader("📈 Model Performans Merkezi • V3.24")
     st.caption(
         "13.10.2026'dan itibaren üretilen ANA SEÇİMLERİN gerçek ileriye dönük performansını izler. "
-        "V3.23 ayrıca takip başlangıcından ÖNCEKİ walk-forward backtest ile canlı sonuçları yan yana gösterir. "
+        "V3.24 ayrıca takip başlangıcından ÖNCEKİ walk-forward backtest ile canlı sonuçları yan yana gösterir. "
         "Bu ekran yalnızca raporlama yapar; karar motoru, oran kilitleme ve sonuçlandırma mantığını değiştirmez."
     )
 
@@ -99,6 +99,9 @@ def render(matches, run_final_decision_backtest, build_coupon_candidates, next7,
                 st.info("Canlı sonuç henüz yok. İlk takip maçları bittikten sonra Canlı % ve Fark sütunları otomatik oluşacak.")
             elif len(settled) < 30:
                 st.warning("Canlı örneklem henüz küçük. Backtest ile farkı erken dönemde model üstünlüğü veya bozulması olarak yorumlamamak gerekir.")
+
+    from weekly_performance_v324 import render as render_weekly_performance
+    render_weekly_performance(all_ana)
 
     st.markdown("### 🎯 Pazar bazında gerçek performans")
     if settled.empty:
