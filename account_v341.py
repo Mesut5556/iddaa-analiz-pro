@@ -390,7 +390,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    # V3.47.2 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
+    # V3.47.3 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
     st.markdown("""<style>
     /* Hesabım: dark-theme form controls and mobile readability */
     div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
@@ -425,6 +425,39 @@ def render_account(matches=None):
       color:#ffffff!important;
       opacity:.72!important;
     }
+    /* V3.47.3: Streamlit/BaseWeb variants seen on current Community Cloud.
+       Scope stays inside stForm so other app buttons are untouched. */
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"],
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] > div {
+      background:transparent!important;
+    }
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button,
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button[kind],
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button[data-testid],
+    div[data-testid="stForm"] button[data-testid="stBaseButton-primaryFormSubmit"],
+    div[data-testid="stForm"] button[data-testid="stBaseButton-secondaryFormSubmit"],
+    div[data-testid="stForm"] button[data-testid^="stBaseButton-"] {
+      background:#17324f!important;
+      background-color:#17324f!important;
+      border-color:#315778!important;
+      color:#ffffff!important;
+      opacity:1!important;
+      box-shadow:none!important;
+    }
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button p,
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button span,
+    div[data-testid="stForm"] button[data-testid^="stBaseButton-"] p,
+    div[data-testid="stForm"] button[data-testid^="stBaseButton-"] span {
+      color:#ffffff!important;
+      opacity:1!important;
+    }
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button:hover,
+    div[data-testid="stForm"] button[data-testid^="stBaseButton-"]:hover {
+      background:#1f466c!important;
+      background-color:#1f466c!important;
+      border-color:#43e39d!important;
+      color:#ffffff!important;
+    }
     div[data-testid="stForm"] [data-testid="stTextInput"] button {color:#eaf3fa!important;}
     @media(max-width:700px){
       div[data-testid="stMetric"] {background:#0d2035;border:1px solid #203c58;border-radius:12px;padding:10px 12px;min-height:92px;}
@@ -433,7 +466,7 @@ def render_account(matches=None):
       h3 {font-size:1.55rem!important;line-height:1.2!important;}
     }
     </style>""", unsafe_allow_html=True)
-    st.subheader("👤 Hesabım • V3.47.2")
+    st.subheader("👤 Hesabım • V3.47.3")
     st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
