@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.49</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.50</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -948,7 +948,7 @@ def _v333_open_match_analysis(home, away, dt_iso):
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🛡️ Takım Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","📈 Model Performansı","🧪 Backtest","⚙️ Ayarlar"],horizontal=True,key="main_menu")
 
 if menu == "🏠 Ana Sayfa":
-    # V3.49 • Profesyonel, salt-okunur ana kontrol paneli.
+    # V3.50 • Profesyonel, salt-okunur ana kontrol paneli.
     st.markdown("## 🏠 Profesyonel Kontrol Paneli")
     st.caption("Yaklaşan maçlar, V3.14 ANA SEÇİMLER ve kilitli maç önü oranlarının tek ekran özeti.")
 
@@ -1078,7 +1078,7 @@ elif menu == "📅 Fikstür":
         st.dataframe(d, hide_index=True, use_container_width=True)
 
 elif menu == "📊 Maç Analizi":
-    st.subheader("📊 Maç Analiz Merkezi • V3.49")
+    st.subheader("📊 Maç Analiz Merkezi • V3.50")
     st.caption("Tek ekranda form, saha performansı, gol eğilimleri, Poisson modeli, güven filtresi ve isteğe bağlı canlı 1.5 gol oranı.")
     if future.empty:
         st.info("Analiz için gelecekteki maç bulunamadı.")
@@ -1321,7 +1321,7 @@ elif menu == "🛡️ Takım Analizi":
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.49")
+    st.subheader("🎟️ Kupon Merkezi • V3.50")
     st.markdown("""<style>
     /* V3.46 Kupon Merkezi - mobile-first presentation only */
     .coupon-kicker{font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#43e39d;text-transform:uppercase;margin-bottom:.25rem}
@@ -1371,7 +1371,7 @@ elif menu == "🎟️ Kupon Merkezi":
         rule_text = "ANA SEÇİM • model ≥ %65 • backtest ≥ %65 • en fazla 4 ayak • toplam risk daha yüksek"
     st.markdown(f'<div class="coupon-rule"><b>{escape(mode)}</b><br>{escape(rule_text)}</div>', unsafe_allow_html=True)
 
-    # V3.49: profile summary only; selection thresholds and V3.14 engine stay frozen.
+    # V3.50: profile summary only; selection thresholds and V3.14 engine stay frozen.
     candidate_count = 0 if candidates.empty else len(candidates)
     selected_count = 0 if coupon.empty else len(coupon)
     st.markdown(
@@ -1386,7 +1386,7 @@ elif menu == "🎟️ Kupon Merkezi":
     else:
         st.markdown('<div class="coupon-kicker">Haftalık otomatik seçim</div><div class="coupon-title">🎟️ Bu Haftanın Otomatik Kuponu</div>', unsafe_allow_html=True)
 
-        # V3.49: kilitli oranları kartlarda da göster. Salt-okunur köprü; yeni oran üretmez/kilitlemez.
+        # V3.50: kilitli oranları kartlarda da göster. Salt-okunur köprü; yeni oran üretmez/kilitlemez.
         odds_info = {"matched": 0, "total": len(coupon)}
         try:
             from coupon_odds_v318 import enrich_coupon, combined_odds
@@ -1506,7 +1506,7 @@ elif menu == "🎟️ Kupon Merkezi":
                 missing = max(total_legs - matched, 0)
                 st.info(f"{matched}/{total_legs} ayakta kilitli gerçek oran bulundu. {missing} ayak daha kilitlenmeden toplam kupon oranı ve dönüş hesabı yapılmayacak.")
         except Exception as exc:
-            st.warning("V3.49 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
+            st.warning("V3.50 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
 
         # Authenticated users persist the exact coupon, including locked odds when available.
         try:
@@ -1987,4 +1987,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.49 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.50 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")

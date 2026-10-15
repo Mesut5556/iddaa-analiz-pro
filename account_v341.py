@@ -1,6 +1,6 @@
-"""V3.47 account UI polish + immutable coupon snapshot + guarded automatic settlement + settlement audit + duplicate-safe saving + safe deletion.
+"""V3.43 account + immutable coupon snapshot + guarded automatic settlement + settlement audit + duplicate-safe saving + safe deletion.
 Uses Supabase Auth/RLS. Settlement only consumes finished fixtures supplied by app.py.
-V3.47 does not alter the V3.14 decision engine or any locked pre-match odds.
+V3.43 does not alter the V3.14 decision engine or any locked pre-match odds.
 """
 import json
 import urllib.error
@@ -390,200 +390,20 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    # V3.47.6 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
-    st.markdown("""<style>
-    /* Hesabım: dark-theme form controls and mobile readability */
-    div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
-    div[data-testid="stForm"] input {background:#10253c!important;color:#ffffff!important;border:1px solid #315778!important;}
-    div[data-testid="stForm"] input:focus {border-color:#43e39d!important;box-shadow:0 0 0 1px #43e39d!important;}
-    div[data-testid="stForm"] label, div[data-testid="stForm"] p {color:#eaf3fa!important;}
-    /* V3.47.5: login/signup inputs are outside stForm. Style the actual BaseWeb
-       input wrappers from the first paint, not only after focus/tap. */
-    div[data-testid="stTextInput"] > div,
-    div[data-testid="stTextInput"] [data-baseweb="input"],
-    div[data-testid="stTextInput"] [data-baseweb="base-input"] {
-      background:#10253c!important;
-      background-color:#10253c!important;
-      border-color:#315778!important;
-      color:#ffffff!important;
-    }
-    div[data-testid="stTextInput"] input {
-      background:#10253c!important;
-      background-color:#10253c!important;
-      color:#ffffff!important;
-      -webkit-text-fill-color:#ffffff!important;
-      caret-color:#43e39d!important;
-    }
-    div[data-testid="stTextInput"] input::placeholder {color:#91a4b7!important;opacity:1!important;}
-    div[data-testid="stTextInput"]:focus-within > div,
-    div[data-testid="stTextInput"]:focus-within [data-baseweb="input"],
-    div[data-testid="stTextInput"]:focus-within [data-baseweb="base-input"] {
-      border-color:#43e39d!important;
-      box-shadow:0 0 0 1px #43e39d!important;
-    }
-    div[data-testid="stTextInput"] button,
-    div[data-testid="stTextInput"] button svg {color:#eaf3fa!important;fill:currentColor!important;}
-    /* Streamlit form submit button: target current + legacy DOM variants */
-    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button,
-    div[data-testid="stForm"] button[kind="primaryFormSubmit"],
-    div[data-testid="stForm"] button[type="submit"] {
-      background:#17324f!important;
-      background-color:#17324f!important;
-      color:#ffffff!important;
-      border:1px solid #315778!important;
-      font-weight:800!important;
-      opacity:1!important;
-    }
-    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button *,
-    div[data-testid="stForm"] button[kind="primaryFormSubmit"] *,
-    div[data-testid="stForm"] button[type="submit"] * {color:#ffffff!important;}
-    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button:hover,
-    div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
-    div[data-testid="stForm"] button[type="submit"]:hover {
-      background:#1f466c!important;
-      background-color:#1f466c!important;
-      border-color:#43e39d!important;
-      color:#ffffff!important;
-    }
-    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button:disabled {
-      background:#17324f!important;
-      background-color:#17324f!important;
-      color:#ffffff!important;
-      opacity:.72!important;
-    }
-    /* V3.47.4: Streamlit/BaseWeb variants seen on current Community Cloud.
-       Scope stays inside stForm so other app buttons are untouched. */
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"],
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] > div {
-      background:transparent!important;
-    }
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button,
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button[kind],
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button[data-testid],
-    div[data-testid="stForm"] button[data-testid="stBaseButton-primaryFormSubmit"],
-    div[data-testid="stForm"] button[data-testid="stBaseButton-secondaryFormSubmit"],
-    div[data-testid="stForm"] button[data-testid^="stBaseButton-"] {
-      background:#17324f!important;
-      background-color:#17324f!important;
-      border-color:#315778!important;
-      color:#ffffff!important;
-      opacity:1!important;
-      box-shadow:none!important;
-    }
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button p,
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button span,
-    div[data-testid="stForm"] button[data-testid^="stBaseButton-"] p,
-    div[data-testid="stForm"] button[data-testid^="stBaseButton-"] span {
-      color:#ffffff!important;
-      opacity:1!important;
-    }
-    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button:hover,
-    div[data-testid="stForm"] button[data-testid^="stBaseButton-"]:hover {
-      background:#1f466c!important;
-      background-color:#1f466c!important;
-      border-color:#43e39d!important;
-      color:#ffffff!important;
-    }
-    /* V3.47.4: login/signup now use normal primary buttons, avoiding the
-       mobile form-submit skin that remained white on Community Cloud. */
-    div[data-testid="stButton"] button[kind="primary"],
-    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"] {
-      background:#17324f!important;
-      background-color:#17324f!important;
-      border:1px solid #315778!important;
-      color:#ffffff!important;
-      opacity:1!important;
-      box-shadow:none!important;
-      font-weight:800!important;
-    }
-    div[data-testid="stButton"] button[kind="primary"] p,
-    div[data-testid="stButton"] button[kind="primary"] span,
-    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"] p,
-    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"] span {
-      color:#ffffff!important; opacity:1!important;
-    }
-    div[data-testid="stButton"] button[kind="primary"]:hover,
-    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"]:hover {
-      background:#1f466c!important;
-      background-color:#1f466c!important;
-      border-color:#43e39d!important;
-      color:#ffffff!important;
-    }
-    div[data-testid="stForm"] [data-testid="stTextInput"] button {color:#eaf3fa!important;}
-    @media(max-width:700px){
-      div[data-testid="stMetric"] {background:#0d2035;border:1px solid #203c58;border-radius:12px;padding:10px 12px;min-height:92px;}
-      div[data-testid="stMetricLabel"] p {font-size:13px!important;white-space:normal!important;}
-      div[data-testid="stMetricValue"] {font-size:27px!important;}
-      h3 {font-size:1.55rem!important;line-height:1.2!important;}
-    }
-    /* V3.47.6 HARD FIX — mobile first-paint colors.
-       Deliberately broad inside Hesabım: Streamlit changed button/input attributes
-       between builds, so target the stable widget testids and BaseWeb wrappers. */
-    div[data-testid="stTextInput"] [data-baseweb="input"],
-    div[data-testid="stTextInput"] [data-baseweb="input"] > div,
-    div[data-testid="stTextInput"] [data-baseweb="base-input"],
-    div[data-testid="stTextInput"] [data-baseweb="base-input"] > div,
-    div[data-testid="stTextInput"] input {
-      background:#10253c !important;
-      background-color:#10253c !important;
-      color:#ffffff !important;
-      -webkit-text-fill-color:#ffffff !important;
-      border-color:#315778 !important;
-      opacity:1 !important;
-    }
-    div[data-testid="stTextInput"] svg {color:#eaf3fa !important;fill:#eaf3fa !important;}
-
-    /* Login/signup primary action: fixed navy in normal/hover/focus/active states. */
-    div[data-testid="stButton"] > button,
-    div[data-testid="stButton"] button,
-    button[data-testid^="stBaseButton-primary"] {
-      background:#17324f !important;
-      background-color:#17324f !important;
-      color:#ffffff !important;
-      border:1px solid #315778 !important;
-      opacity:1 !important;
-      box-shadow:none !important;
-    }
-    div[data-testid="stButton"] > button:hover,
-    div[data-testid="stButton"] > button:focus,
-    div[data-testid="stButton"] > button:focus-visible,
-    div[data-testid="stButton"] > button:active,
-    div[data-testid="stButton"] button:hover,
-    div[data-testid="stButton"] button:focus,
-    div[data-testid="stButton"] button:active {
-      background:#17324f !important;
-      background-color:#17324f !important;
-      color:#ffffff !important;
-      border-color:#315778 !important;
-      box-shadow:none !important;
-    }
-    div[data-testid="stButton"] button p,
-    div[data-testid="stButton"] button span {color:#ffffff !important;opacity:1 !important;}
-    </style>""", unsafe_allow_html=True)
-    st.subheader("👤 Hesabım • V3.47.6")
-    st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
+    st.subheader("👤 Hesabım • V3.50")
+    st.caption("Kullanıcıya özel kupon geçmişi, performans özeti ve güvenli sonuç kontrolü. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
         with tab1:
-            # V3.47.4: regular Streamlit button is used instead of form-submit.
-            # Current Community Cloud applies an opaque disabled/form style to
-            # form_submit_button on some mobile browsers; this avoids that UI layer
-            # without changing authentication behavior.
-            email=st.text_input("E-posta", key="login_email")
-            password=st.text_input("Şifre", type="password", key="login_password")
-            go=st.button("Giriş yap", use_container_width=True, type="primary", key="login_button")
+            with st.form("v318_login"):
+                email=st.text_input("E-posta"); password=st.text_input("Şifre", type="password"); go=st.form_submit_button("Giriş yap", use_container_width=True)
             if go:
-                if not email.strip() or not password:
-                    st.warning("E-posta ve şifre alanlarını doldur.")
-                else:
-                    try: sign_in(email,password); st.success("Giriş başarılı."); st.rerun()
-                    except Exception as exc: st.error(str(exc))
+                try: sign_in(email,password); st.success("Giriş başarılı."); st.rerun()
+                except Exception as exc: st.error(str(exc))
         with tab2:
-            email=st.text_input("E-posta",key="signup_email")
-            password=st.text_input("Şifre (en az 6 karakter)",type="password",key="signup_password")
-            password2=st.text_input("Şifre tekrar",type="password",key="signup_password2")
-            go=st.button("Hesap oluştur",use_container_width=True, type="primary", key="signup_button")
+            with st.form("v318_signup"):
+                email=st.text_input("E-posta",key="signup_email"); password=st.text_input("Şifre (en az 6 karakter)",type="password",key="signup_password"); password2=st.text_input("Şifre tekrar",type="password"); go=st.form_submit_button("Hesap oluştur",use_container_width=True)
             if go:
                 if len(password)<6: st.error("Şifre en az 6 karakter olmalı.")
                 elif password!=password2: st.error("Şifreler aynı değil.")
@@ -604,40 +424,17 @@ def render_account(matches=None):
         try:
             settlement_info = settle_saved_coupons(matches)
             if settlement_info["updated"]:
-                st.success(f"{settlement_info['updated']} kupon kesinleşmiş maç sonuçlarıyla güncellendi.")
+                st.success(f"V3.43: {settlement_info['updated']} kupon kaydı kesinleşmiş maç sonuçlarıyla güncellendi.")
         except Exception as exc:
             settlement_error = str(exc)[:160]
             st.warning("Kupon sonuçlandırma geçici olarak tamamlanamadı: " + settlement_error)
 
     rows=list_coupons()
 
-    # V3.42: visible, non-invasive settlement audit panel. This does not create
-    # picks, alter frozen odds, or change the V3.14 decision engine.
-    st.markdown("### 🔄 Otomatik sonuç kontrolü")
-    open_after = sum(r.get("status") == "ACIK" for r in rows)
-    finished_after = sum(r.get("status") in ("KAZANDI", "KAYBETTI") for r in rows)
-    s1, s2, s3 = st.columns(3)
-    s1.metric("Kontrol edilen kupon", settlement_info.get("checked", 0))
-    s2.metric("Bu kontrolde güncellenen", settlement_info.get("updated", 0))
-    s3.metric("Kesinleşen toplam", finished_after)
-    if settlement_error:
-        st.error("Sonuç kontrolü tamamlanamadı; mevcut kayıtlar değiştirilmedi.")
-    elif matches is None:
-        st.info("Fikstür/skor verisi gelmediği için sonuç kontrolü yapılmadı.")
-    elif open_after:
-        st.info(f"⏳ {open_after} açık kupon var. Yalnızca kesinleşmiş maç skorları geldikçe ayaklar otomatik işaretlenir.")
-    else:
-        st.success("Açık kupon bulunmuyor.")
-    if st.button("🔄 Sonuçları şimdi yeniden kontrol et", use_container_width=True, key="v341_recheck"):
-        st.rerun()
-    st.caption("Yalnızca kesinleşmiş skorlar okunur; kayıtlı seçim, kupon tutarı ve kilitli maç önü oranı değiştirilmez.")
-
     st.markdown("### 📊 Kupon performansım")
     total=len(rows); open_n=sum(r.get("status")=="ACIK" for r in rows); won=sum(r.get("status")=="KAZANDI" for r in rows); lost=sum(r.get("status")=="KAYBETTI" for r in rows)
-    a,b=st.columns(2)
-    a.metric("Toplam kupon", total); b.metric("Açık kupon", open_n)
-    c,d=st.columns(2)
-    c.metric("Kazandı", won); d.metric("Kaybetti", lost)
+    a,b,c,d=st.columns(4)
+    a.metric("Toplam", total); b.metric("Açık", open_n); c.metric("Kazandı", won); d.metric("Kaybetti", lost)
 
     # V3.21: portfolio-level finance is rebuilt only from immutable save-time snapshots.
     total_staked = 0.0
@@ -672,15 +469,34 @@ def render_account(matches=None):
                 realized_gross_total += gross_fin or 0.0
 
     st.markdown("### 💰 Finansal performans")
-    f1,f2=st.columns(2)
+    f1,f2,f3,f4=st.columns(4)
     f1.metric("Kayıtlı toplam tutar", f"{total_staked:,.2f} TL" if financial_coupon_count else "—")
     f2.metric("Sonuçlanan yatırım", f"{settled_staked:,.2f} TL" if settled_financial_count else "—")
-    f3,f4=st.columns(2)
     f3.metric("Gerçekleşen dönüş", f"{realized_gross_total:,.2f} TL" if settled_financial_count else "—")
     f4.metric("Net kâr / zarar", f"{realized_net_total:+,.2f} TL" if settled_financial_count else "—")
     roi = (realized_net_total / settled_staked * 100.0) if settled_staked > 0 else None
     st.metric("Sonuçlanan kupon ROI", f"%{roi:+.2f}" if roi is not None else "—")
     st.caption("ROI yalnızca sonucu kesinleşmiş ve kayıt anında tutarı/oranı dondurulmuş kuponlardan hesaplanır. Açık kuponlar ROI'ye dahil edilmez.")
+
+    # V3.50: compact settlement status; secondary to the user's performance dashboard.
+    st.markdown("### 🔄 Sonuç kontrolü")
+    open_after = sum(r.get("status") == "ACIK" for r in rows)
+    finished_after = sum(r.get("status") in ("KAZANDI", "KAYBETTI") for r in rows)
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Açık kupon", open_after)
+    s2.metric("Bu kontrolde güncellenen", settlement_info.get("updated", 0))
+    s3.metric("Kesinleşen", finished_after)
+    if settlement_error:
+        st.warning("Sonuç kontrolü tamamlanamadı; mevcut kayıtlar değiştirilmedi.")
+    elif matches is None:
+        st.info("Fikstür/skor verisi gelmediği için sonuç kontrolü yapılmadı.")
+    elif open_after:
+        st.caption(f"⏳ {open_after} açık kupon kesinleşmiş skorları bekliyor. Kontrol edilen: {settlement_info.get('checked', 0)}.")
+    else:
+        st.caption("✅ Açık kupon bulunmuyor.")
+    if st.button("🔄 Sonuçları yeniden kontrol et", use_container_width=True, key="v350_recheck"):
+        st.rerun()
+    st.caption("Yalnızca kesinleşmiş skorlar okunur; kayıtlı seçim, kupon tutarı ve kilitli maç önü oranı değiştirilmez.")
 
     # V3.35: Monday-Sunday weekly coupon performance from persistent saved coupons.
     st.markdown("### 📅 Bu haftanın kupon performansı")
@@ -701,14 +517,12 @@ def render_account(matches=None):
     weekly_lost = sum(r.get("status") == "KAYBETTI" for r in weekly_rows)
     weekly_settled = weekly_won + weekly_lost
     weekly_hit = (100.0 * weekly_won / weekly_settled) if weekly_settled else None
-    w1,w2,w3 = st.columns(3)
+    w1,w2,w3,w4,w5 = st.columns(5)
     w1.metric("Kaydedilen", weekly_total)
     w2.metric("Açık", weekly_open)
-    w3.metric("Sonuçlanan", weekly_settled)
-    w4,w5,w6 = st.columns(3)
-    w4.metric("Kazandı", weekly_won)
-    w5.metric("Kaybetti", weekly_lost)
-    w6.metric("Kupon isabeti", f"%{weekly_hit:.1f}" if weekly_hit is not None else "—")
+    w3.metric("Kazandı", weekly_won)
+    w4.metric("Kaybetti", weekly_lost)
+    w5.metric("Kupon isabeti", f"%{weekly_hit:.1f}" if weekly_hit is not None else "—")
 
     weekly_stake = 0.0
     weekly_net = 0.0
@@ -753,13 +567,8 @@ def render_account(matches=None):
         title=r.get("title") or "Kupon"
         created=str(r.get("created_at","")).replace("T"," ")[:16]
         st.markdown(f"#### {icon} {title}")
-        clean_mode = str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ","")
-        x1,x2=st.columns(2)
-        x1.metric("Durum", "AÇIK" if status == "ACIK" else status)
-        x2.metric("Kupon tipi", clean_mode or "—")
-        x3,x4=st.columns(2)
-        x3.metric("Ayak", len(legs))
-        x4.metric("Sonuçlanan", f"{done}/{len(legs)}")
+        x1,x2,x3,x4=st.columns(4)
+        x1.metric("Durum", status); x2.metric("Ayak", len(legs)); x3.metric("Sonuçlanan", f"{done}/{len(legs)}"); x4.metric("Tip", str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ",""))
         st.caption(f"Kayıt: {created}")
         # V3.37: coupon detail card. All figures come from the frozen save-time snapshot;
         # settlement continues to use the existing V3.16 logic without changing the decision engine.
@@ -776,10 +585,10 @@ def render_account(matches=None):
             saved_total = meta_leg.get("V3.19 Toplam Oran")
             saved_return = meta_leg.get("V3.19 Olası Brüt Dönüş")
             if saved_total is not None:
-                m1,m2=st.columns(2)
-                m1.metric("Toplam oran", f"{float(saved_total):.2f}")
+                m1,m2,m3=st.columns(3)
+                m1.metric("Kayıtlı toplam oran", f"{float(saved_total):.2f}")
                 m2.metric("Kupon tutarı", f"{float(saved_stake):,.2f} TL" if saved_stake is not None else "—")
-                st.metric("Olası brüt dönüş", f"{float(saved_return):,.2f} TL" if saved_return is not None else "—")
+                m3.metric("Olası brüt dönüş", f"{float(saved_return):,.2f} TL" if saved_return is not None else "—")
                 realized_net = meta_leg.get("V3.20 Net TL")
                 realized_gross = meta_leg.get("V3.20 Gerçekleşen Brüt Dönüş")
                 if realized_net is not None:
@@ -788,7 +597,7 @@ def render_account(matches=None):
                     r2.metric("Net sonuç", f"{float(realized_net):+,.2f} TL")
 
         audit = _settlement_audit(r)
-        with st.expander("🧾 Sonuçlandırma denetimi", expanded=(status in ("KAZANDI", "KAYBETTI"))):
+        with st.expander("🧾 V3.43 sonuçlandırma audit", expanded=(status in ("KAZANDI", "KAYBETTI"))):
             au1, au2, au3, au4 = st.columns(4)
             au1.metric("Ayak", audit["legs"])
             au2.metric("✅ Bildi", audit["won"])
@@ -845,7 +654,7 @@ def render_account(matches=None):
                         model=row.get("Model %","—")
                         backtest=row.get("Backtest %","—")
                         st.caption(f"Kaynak: {source} • Model: %{model} • Backtest: %{backtest}")
-                st.caption("Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
+                st.caption("V3.43: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
 
         # V3.42.1 safe per-coupon deletion: first click arms confirmation,
         # second click deletes only this user's exact coupon id.
