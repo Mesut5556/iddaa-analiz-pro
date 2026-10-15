@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.53 • Değer Filtresi</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.53.1 • Değer Filtresi</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -977,6 +977,10 @@ def _v333_open_match_analysis(home, away, dt_iso):
     st.session_state["main_menu"] = "📊 Maç Analizi"
     st.session_state.pop("v333_match_selector", None)
 
+def _navigate_main_menu(target):
+    """Streamlit widget callback: change the main radio safely before rerun."""
+    st.session_state["main_menu"] = str(target)
+
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🛡️ Takım Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","📈 Model Performansı","🧪 Backtest","⚙️ Ayarlar"],horizontal=True,key="main_menu")
 
 if menu == "🏠 Ana Sayfa":
@@ -1079,15 +1083,9 @@ if menu == "🏠 Ana Sayfa":
 
     st.markdown("### ⚡ Hızlı İşlemler")
     b1,b2,b3 = st.columns(3)
-    if b1.button("📊 Maç Analizine Git", use_container_width=True):
-        st.session_state["main_menu"] = "📊 Maç Analizi"
-        st.rerun()
-    if b2.button("🎟️ Kupon Merkezini Aç", use_container_width=True):
-        st.session_state["main_menu"] = "🎟️ Kupon Merkezi"
-        st.rerun()
-    if b3.button("📒 Canlı Takibi Aç", use_container_width=True):
-        st.session_state["main_menu"] = "📒 Canlı Takip"
-        st.rerun()
+    b1.button("📊 Maç Analizine Git", use_container_width=True, on_click=_navigate_main_menu, args=("📊 Maç Analizi",))
+    b2.button("🎟️ Kupon Merkezini Aç", use_container_width=True, on_click=_navigate_main_menu, args=("🎟️ Kupon Merkezi",))
+    b3.button("📒 Canlı Takibi Aç", use_container_width=True, on_click=_navigate_main_menu, args=("📒 Canlı Takip",))
 
     with st.expander("📅 Önümüzdeki 15 günün fikstürünü göster"):
         if next15.empty:
@@ -1560,9 +1558,13 @@ elif menu == "🎟️ Kupon Merkezi":
                     else:
                         st.success("Kupon kaydetme isteği tamamlandı.")
                         st.info("Kayıt doğrulaması henüz listede görünmedi; sayfa yenilendiğinde Hesabım bölümünden kontrol edebilirsin.")
-                if st.button("👤 Hesabımda kayıtlı kuponları aç", key=f"v342_account_{mode}", use_container_width=True):
-                    st.session_state["main_menu"] = "👤 Hesabım"
-                    st.rerun()
+                st.button(
+                    "👤 Hesabımda kayıtlı kuponları aç",
+                    key=f"v342_account_{mode}",
+                    use_container_width=True,
+                    on_click=_navigate_main_menu,
+                    args=("👤 Hesabım",),
+                )
             else:
                 st.info("💾 Kuponu kalıcı kaydetmek için 👤 Hesabım bölümünden giriş yap.")
         except Exception as exc:
@@ -2025,4 +2027,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.50.1 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.53.1 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
