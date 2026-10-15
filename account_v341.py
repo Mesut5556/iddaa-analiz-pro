@@ -390,13 +390,39 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    # V3.47.4 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
+    # V3.47.5 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
     st.markdown("""<style>
     /* Hesabım: dark-theme form controls and mobile readability */
     div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
     div[data-testid="stForm"] input {background:#10253c!important;color:#ffffff!important;border:1px solid #315778!important;}
     div[data-testid="stForm"] input:focus {border-color:#43e39d!important;box-shadow:0 0 0 1px #43e39d!important;}
     div[data-testid="stForm"] label, div[data-testid="stForm"] p {color:#eaf3fa!important;}
+    /* V3.47.5: login/signup inputs are outside stForm. Style the actual BaseWeb
+       input wrappers from the first paint, not only after focus/tap. */
+    div[data-testid="stTextInput"] > div,
+    div[data-testid="stTextInput"] [data-baseweb="input"],
+    div[data-testid="stTextInput"] [data-baseweb="base-input"] {
+      background:#10253c!important;
+      background-color:#10253c!important;
+      border-color:#315778!important;
+      color:#ffffff!important;
+    }
+    div[data-testid="stTextInput"] input {
+      background:#10253c!important;
+      background-color:#10253c!important;
+      color:#ffffff!important;
+      -webkit-text-fill-color:#ffffff!important;
+      caret-color:#43e39d!important;
+    }
+    div[data-testid="stTextInput"] input::placeholder {color:#91a4b7!important;opacity:1!important;}
+    div[data-testid="stTextInput"]:focus-within > div,
+    div[data-testid="stTextInput"]:focus-within [data-baseweb="input"],
+    div[data-testid="stTextInput"]:focus-within [data-baseweb="base-input"] {
+      border-color:#43e39d!important;
+      box-shadow:0 0 0 1px #43e39d!important;
+    }
+    div[data-testid="stTextInput"] button,
+    div[data-testid="stTextInput"] button svg {color:#eaf3fa!important;fill:currentColor!important;}
     /* Streamlit form submit button: target current + legacy DOM variants */
     div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button,
     div[data-testid="stForm"] button[kind="primaryFormSubmit"],
@@ -491,7 +517,7 @@ def render_account(matches=None):
       h3 {font-size:1.55rem!important;line-height:1.2!important;}
     }
     </style>""", unsafe_allow_html=True)
-    st.subheader("👤 Hesabım • V3.47.4")
+    st.subheader("👤 Hesabım • V3.47.5")
     st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
