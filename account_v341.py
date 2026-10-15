@@ -390,20 +390,40 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.47")
+    # V3.47.1 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
+    st.markdown("""<style>
+    /* Hesabım: dark-theme form controls and mobile readability */
+    div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
+    div[data-testid="stForm"] input {background:#10253c!important;color:#ffffff!important;border:1px solid #315778!important;}
+    div[data-testid="stForm"] input:focus {border-color:#43e39d!important;box-shadow:0 0 0 1px #43e39d!important;}
+    div[data-testid="stForm"] label, div[data-testid="stForm"] p {color:#eaf3fa!important;}
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"],
+    div[data-testid="stForm"] button[type="submit"] {background:#17324f!important;color:#ffffff!important;border:1px solid #315778!important;font-weight:800!important;}
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"] p,
+    div[data-testid="stForm"] button[type="submit"] p {color:#ffffff!important;}
+    div[data-testid="stForm"] button:hover {background:#1f466c!important;border-color:#43e39d!important;}
+    div[data-testid="stForm"] [data-testid="stTextInput"] button {color:#eaf3fa!important;}
+    @media(max-width:700px){
+      div[data-testid="stMetric"] {background:#0d2035;border:1px solid #203c58;border-radius:12px;padding:10px 12px;min-height:92px;}
+      div[data-testid="stMetricLabel"] p {font-size:13px!important;white-space:normal!important;}
+      div[data-testid="stMetricValue"] {font-size:27px!important;}
+      h3 {font-size:1.55rem!important;line-height:1.2!important;}
+    }
+    </style>""", unsafe_allow_html=True)
+    st.subheader("👤 Hesabım • V3.47.1")
     st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
         with tab1:
             with st.form("v318_login"):
-                email=st.text_input("E-posta"); password=st.text_input("Şifre", type="password"); go=st.form_submit_button("Giriş yap", use_container_width=True)
+                email=st.text_input("E-posta"); password=st.text_input("Şifre", type="password"); go=st.form_submit_button("Giriş yap", use_container_width=True, type="primary")
             if go:
                 try: sign_in(email,password); st.success("Giriş başarılı."); st.rerun()
                 except Exception as exc: st.error(str(exc))
         with tab2:
             with st.form("v318_signup"):
-                email=st.text_input("E-posta",key="signup_email"); password=st.text_input("Şifre (en az 6 karakter)",type="password",key="signup_password"); password2=st.text_input("Şifre tekrar",type="password"); go=st.form_submit_button("Hesap oluştur",use_container_width=True)
+                email=st.text_input("E-posta",key="signup_email"); password=st.text_input("Şifre (en az 6 karakter)",type="password",key="signup_password"); password2=st.text_input("Şifre tekrar",type="password"); go=st.form_submit_button("Hesap oluştur",use_container_width=True, type="primary")
             if go:
                 if len(password)<6: st.error("Şifre en az 6 karakter olmalı.")
                 elif password!=password2: st.error("Şifreler aynı değil.")
@@ -575,9 +595,11 @@ def render_account(matches=None):
         st.markdown(f"#### {icon} {title}")
         clean_mode = str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ","")
         x1,x2=st.columns(2)
-        x1.metric("Durum", "AÇIK" if status == "ACIK" else status); x2.metric("Kupon tipi", clean_mode)
+        x1.metric("Durum", "AÇIK" if status == "ACIK" else status)
+        x2.metric("Kupon tipi", clean_mode or "—")
         x3,x4=st.columns(2)
-        x3.metric("Ayak", len(legs)); x4.metric("Sonuçlanan", f"{done}/{len(legs)}")
+        x3.metric("Ayak", len(legs))
+        x4.metric("Sonuçlanan", f"{done}/{len(legs)}")
         st.caption(f"Kayıt: {created}")
         # V3.37: coupon detail card. All figures come from the frozen save-time snapshot;
         # settlement continues to use the existing V3.16 logic without changing the decision engine.
