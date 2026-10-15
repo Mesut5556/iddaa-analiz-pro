@@ -1,6 +1,6 @@
-"""V3.42.1 account + immutable coupon snapshot + guarded automatic settlement + duplicate-safe saving + safe deletion.
+"""V3.43 account + immutable coupon snapshot + guarded automatic settlement + settlement audit + duplicate-safe saving + safe deletion.
 Uses Supabase Auth/RLS. Settlement only consumes finished fixtures supplied by app.py.
-V3.41 does not alter the V3.14 decision engine or any locked pre-match odds.
+V3.43 does not alter the V3.14 decision engine or any locked pre-match odds.
 """
 import json
 import urllib.error
@@ -351,6 +351,23 @@ def _settle_coupon(row, matches):
     return (new_legs, new_status) if changed else None
 
 
+def _settlement_audit(row):
+    """Read-only V3.43 settlement audit reconstructed from the frozen coupon snapshot."""
+    legs = row.get("legs") if isinstance(row.get("legs"), list) else []
+    states = [_leg_status(x) for x in legs if isinstance(x, dict)]
+    won = sum(x == "BİLDİ" for x in states)
+    lost = sum(x == "BİLEMEDİ" for x in states)
+    waiting = sum(x not in ("BİLDİ", "BİLEMEDİ") for x in states)
+    meta = legs[0] if legs and isinstance(legs[0], dict) else {}
+    return {
+        "legs": len(states), "won": won, "lost": lost, "waiting": waiting,
+        "status": str(row.get("status") or "ACIK"),
+        "settled_at": meta.get("V3.20 Finansal Sonuçlandı"),
+        "gross": meta.get("V3.20 Gerçekleşen Brüt Dönüş"),
+        "net": meta.get("V3.20 Net TL"),
+    }
+
+
 def settle_saved_coupons(matches):
     user, token = current_user(), access_token()
     if not user or not token: return {"checked":0,"updated":0}
@@ -373,8 +390,8 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.42.1")
-    st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. V3.42.1 çift kayıt koruması + güvenli silme + sonuçlandırma katmanı; V3.14 karar motoruna ve kilitli oranlara dokunmaz.")
+    st.subheader("👤 Hesabım • V3.43")
+    st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. V3.43 kupon yaşam döngüsü ve sonuç audit katmanı; V3.14 karar motoruna ve kilitli oranlara dokunmaz.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
@@ -407,7 +424,7 @@ def render_account(matches=None):
         try:
             settlement_info = settle_saved_coupons(matches)
             if settlement_info["updated"]:
-                st.success(f"V3.42: {settlement_info['updated']} kupon kaydı yeni maç sonuçlarıyla güncellendi.")
+                st.success(f"V3.43: {settlement_info['updated']} kupon kaydı kesinleşmiş maç sonuçlarıyla güncellendi.")
         except Exception as exc:
             settlement_error = str(exc)[:160]
             st.warning("Kupon sonuçlandırma geçici olarak tamamlanamadı: " + settlement_error)
@@ -433,7 +450,7 @@ def render_account(matches=None):
         st.success("Açık kupon bulunmuyor.")
     if st.button("🔄 Sonuçları şimdi yeniden kontrol et", use_container_width=True, key="v341_recheck"):
         st.rerun()
-    st.caption("V3.42 kontrolü yalnızca kesinleşmiş fikstür/skor verisini okur. Kayıtlı maç önü oranı, kupon tutarı ve seçimler değiştirilmez.")
+    st.caption("V3.43 kontrolü yalnızca kesinleşmiş fikstür/skor verisini okur. Kayıtlı maç önü oranı, kupon tutarı ve seçimler değiştirilmez.")
 
     st.markdown("### 📊 Kupon performansım")
     total=len(rows); open_n=sum(r.get("status")=="ACIK" for r in rows); won=sum(r.get("status")=="KAZANDI" for r in rows); lost=sum(r.get("status")=="KAYBETTI" for r in rows)
@@ -579,6 +596,23 @@ def render_account(matches=None):
                     r1,r2=st.columns(2)
                     r1.metric("Gerçekleşen brüt dönüş", f"{float(realized_gross):,.2f} TL" if realized_gross is not None else "—")
                     r2.metric("Net sonuç", f"{float(realized_net):+,.2f} TL")
+
+        audit = _settlement_audit(r)
+        with st.expander("🧾 V3.43 sonuçlandırma audit", expanded=(status in ("KAZANDI", "KAYBETTI"))):
+            au1, au2, au3, au4 = st.columns(4)
+            au1.metric("Ayak", audit["legs"])
+            au2.metric("✅ Bildi", audit["won"])
+            au3.metric("❌ Bilemedi", audit["lost"])
+            au4.metric("⏳ Bekliyor", audit["waiting"])
+            if audit["status"] == "KAZANDI":
+                st.success("Tüm ayaklar kesinleşti ve doğru: kupon KAZANDI.")
+            elif audit["status"] == "KAYBETTI":
+                st.error("Tüm ayaklar kesinleşti ve en az bir ayak yanlış: kupon KAYBETTİ.")
+            else:
+                st.info("Kupon henüz açık. Kesinleşmemiş ayaklar sonuç hesabına katılmaz.")
+            if audit.get("settled_at"):
+                st.caption("Finansal sonuçlandırma zamanı: " + str(audit["settled_at"]).replace("T", " ")[:19])
+            st.caption("Audit yalnızca dondurulmuş kupon kaydını okur; seçim, oran veya karar üretmez.")
         with st.expander("Kupon ayaklarını göster", expanded=(len(visible)==1)):
             if not legs:
                 st.info("Bu kuponda ayak verisi yok.")
@@ -621,7 +655,7 @@ def render_account(matches=None):
                         model=row.get("Model %","—")
                         backtest=row.get("Backtest %","—")
                         st.caption(f"Kaynak: {source} • Model: %{model} • Backtest: %{backtest}")
-                st.caption("V3.42.1: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
+                st.caption("V3.43: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
 
         # V3.42.1 safe per-coupon deletion: first click arms confirmation,
         # second click deletes only this user's exact coupon id.
