@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.50.1</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.51.0</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1321,7 +1321,7 @@ elif menu == "🛡️ Takım Analizi":
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.50.1")
+    st.subheader("🎟️ Kupon Merkezi • V3.51.0")
     st.markdown("""<style>
     /* V3.46 Kupon Merkezi - mobile-first presentation only */
     .coupon-kicker{font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#43e39d;text-transform:uppercase;margin-bottom:.25rem}
@@ -1340,6 +1340,14 @@ elif menu == "🎟️ Kupon Merkezi":
     .coupon-summary-title{font-size:.82rem;color:#9fb1c2;margin-bottom:4px}
     .coupon-summary-main{font-size:1.08rem;font-weight:850;color:#fff}
     .coupon-summary-sub{font-size:.8rem;color:#c9d5e0;margin-top:5px}
+    .coupon-profile-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:8px 0 14px}
+    .coupon-profile-card{background:#0d2035;border:1px solid #284763;border-radius:13px;padding:12px}
+    .coupon-profile-name{font-weight:850;color:#fff;margin-bottom:5px}
+    .coupon-profile-desc{font-size:.78rem;color:#aebdca;line-height:1.4}
+    .coupon-profile-active{border-color:#43e39d;box-shadow:0 0 0 1px rgba(67,227,157,.18) inset}
+    .coupon-real-summary{background:linear-gradient(135deg,#0c2b42,#123d43);border:1px solid #2b665e;border-radius:15px;padding:14px 16px;margin:12px 0}
+    .coupon-real-title{font-size:.82rem;color:#9fb1c2;margin-bottom:4px}
+    .coupon-real-main{font-size:1.08rem;font-weight:850;color:#fff}
     @media(max-width:700px){
       .coupon-title{font-size:1.12rem}
       .coupon-leg{padding:12px}
@@ -1348,6 +1356,7 @@ elif menu == "🎟️ Kupon Merkezi":
       div[data-testid="stMetricValue"]{font-size:1.75rem!important}
       div[data-testid="stMetricLabel"] p{font-size:.78rem!important}
       .stButton>button{min-height:44px;font-size:.9rem!important}
+      .coupon-profile-grid{grid-template-columns:1fr}
     }
     </style>""", unsafe_allow_html=True)
     st.caption(
@@ -1361,6 +1370,23 @@ elif menu == "🎟️ Kupon Merkezi":
         ["🛡️ Yüksek Olasılık", "⚖️ Dengeli", "🔥 Yüksek Risk"],
         horizontal=True
     )
+
+    # V3.51: profil farkını tek bakışta anlat; seçim eşikleri değişmez.
+    profile_cards = [
+        ("🛡️ Yüksek Olasılık", "En seçici profil • en fazla 2 ayak", "Model ≥ %75 • Backtest ≥ %75"),
+        ("⚖️ Dengeli", "Orta sıkılık • en fazla 3 ayak", "Model ≥ %70 • Backtest ≥ %70"),
+        ("🔥 Yüksek Risk", "Daha geniş seçim • en fazla 4 ayak", "Model ≥ %65 • Backtest ≥ %65"),
+    ]
+    profile_html = '<div class="coupon-profile-grid">'
+    for pname, pdesc, prule in profile_cards:
+        active = ' coupon-profile-active' if pname == mode else ''
+        profile_html += (
+            f'<div class="coupon-profile-card{active}"><div class="coupon-profile-name">{escape(pname)}</div>'
+            f'<div class="coupon-profile-desc">{escape(pdesc)}<br>{escape(prule)}</div></div>'
+        )
+    profile_html += '</div>'
+    st.markdown(profile_html, unsafe_allow_html=True)
+
     coupon = make_coupon(candidates, mode)
 
     if mode == "🛡️ Yüksek Olasılık":
@@ -1393,6 +1419,15 @@ elif menu == "🎟️ Kupon Merkezi":
             coupon, odds_info = enrich_coupon(coupon)
         except Exception as exc:
             odds_info = {"matched": 0, "total": len(coupon), "error": str(exc)[:160]}
+
+        locked_now = int(odds_info.get("matched", 0))
+        total_now = int(odds_info.get("total", len(coupon)))
+        st.markdown(
+            f'<div class="coupon-real-summary"><div class="coupon-real-title">KUPON DURUMU</div>'
+            f'<div class="coupon-real-main">{total_now} ayak • {locked_now}/{total_now} gerçek maç önü oranı kilitli</div>'
+            f'<div class="coupon-summary-sub">Oran bulunmayan ayak için değer uydurulmaz; toplam oran tüm ayaklar kilitlenince hesaplanır.</div></div>',
+            unsafe_allow_html=True
+        )
 
         # V3.46: aynı veriyi mobilde okunaklı kartlarla sunar; seçim mantığı değişmez.
         for _, row in coupon.iterrows():
@@ -1452,9 +1487,9 @@ elif menu == "🎟️ Kupon Merkezi":
         combined = 100.0
         for p in probs:
             combined *= p
-        st.metric("Yaklaşık birleşik model olasılığı*", f"%{combined:.1f}")
+        st.metric("Model yüzdelerinin kaba birleşimi*", f"%{combined:.1f}")
         st.caption(
-            "*Maçları bağımsız varsayan kaba çarpımdır; gerçek kupon kazanma olasılığı olarak garanti edilemez. "
+            "*Yalnızca model yüzdelerinin bağımsızlık varsayımıyla kaba çarpımıdır; gerçek kupon kazanma olasılığı değildir. "
             "Aşağıdaki bookmaker oranları model yüzdelerinden ayrıdır."
         )
 
@@ -1506,7 +1541,7 @@ elif menu == "🎟️ Kupon Merkezi":
                 missing = max(total_legs - matched, 0)
                 st.info(f"{matched}/{total_legs} ayakta kilitli gerçek oran bulundu. {missing} ayak daha kilitlenmeden toplam kupon oranı ve dönüş hesabı yapılmayacak.")
         except Exception as exc:
-            st.warning("V3.50.1 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
+            st.warning("V3.51 gerçek oranlı kupon paneli geçici olarak hazırlanamadı: " + str(exc)[:160])
 
         # Authenticated users persist the exact coupon, including locked odds when available.
         try:
