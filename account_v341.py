@@ -390,18 +390,41 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    # V3.47.1 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
+    # V3.47.2 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
     st.markdown("""<style>
     /* Hesabım: dark-theme form controls and mobile readability */
     div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
     div[data-testid="stForm"] input {background:#10253c!important;color:#ffffff!important;border:1px solid #315778!important;}
     div[data-testid="stForm"] input:focus {border-color:#43e39d!important;box-shadow:0 0 0 1px #43e39d!important;}
     div[data-testid="stForm"] label, div[data-testid="stForm"] p {color:#eaf3fa!important;}
+    /* Streamlit form submit button: target current + legacy DOM variants */
+    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button,
     div[data-testid="stForm"] button[kind="primaryFormSubmit"],
-    div[data-testid="stForm"] button[type="submit"] {background:#17324f!important;color:#ffffff!important;border:1px solid #315778!important;font-weight:800!important;}
-    div[data-testid="stForm"] button[kind="primaryFormSubmit"] p,
-    div[data-testid="stForm"] button[type="submit"] p {color:#ffffff!important;}
-    div[data-testid="stForm"] button:hover {background:#1f466c!important;border-color:#43e39d!important;}
+    div[data-testid="stForm"] button[type="submit"] {
+      background:#17324f!important;
+      background-color:#17324f!important;
+      color:#ffffff!important;
+      border:1px solid #315778!important;
+      font-weight:800!important;
+      opacity:1!important;
+    }
+    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button *,
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"] *,
+    div[data-testid="stForm"] button[type="submit"] * {color:#ffffff!important;}
+    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button:hover,
+    div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover,
+    div[data-testid="stForm"] button[type="submit"]:hover {
+      background:#1f466c!important;
+      background-color:#1f466c!important;
+      border-color:#43e39d!important;
+      color:#ffffff!important;
+    }
+    div[data-testid="stForm"] div[data-testid="stFormSubmitButton"] button:disabled {
+      background:#17324f!important;
+      background-color:#17324f!important;
+      color:#ffffff!important;
+      opacity:.72!important;
+    }
     div[data-testid="stForm"] [data-testid="stTextInput"] button {color:#eaf3fa!important;}
     @media(max-width:700px){
       div[data-testid="stMetric"] {background:#0d2035;border:1px solid #203c58;border-radius:12px;padding:10px 12px;min-height:92px;}
@@ -410,7 +433,7 @@ def render_account(matches=None):
       h3 {font-size:1.55rem!important;line-height:1.2!important;}
     }
     </style>""", unsafe_allow_html=True)
-    st.subheader("👤 Hesabım • V3.47.1")
+    st.subheader("👤 Hesabım • V3.47.2")
     st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
