@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.44</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.45</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -948,12 +948,54 @@ def _v333_open_match_analysis(home, away, dt_iso):
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🛡️ Takım Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","📈 Model Performansı","🧪 Backtest","⚙️ Ayarlar"],horizontal=True,key="main_menu")
 
 if menu == "🏠 Ana Sayfa":
-    st.subheader("Önümüzdeki 15 Günün Maçları")
-    if next15.empty:
-        st.info("Önümüzdeki 15 gün içinde kayıtlı maç yok.")
+    st.subheader("🏠 Kontrol Paneli • V3.45")
+    st.caption("Yaklaşan maçlar, V3.14 ANA SEÇİMLERİ ve daha önce kilitlenmiş gerçek oranlar tek ekranda. Karar motoru ve sonuçlandırma mantığı değiştirilmemiştir.")
+
+    # V3.45 ana sayfa yalnızca mevcut katmanları OKUR; karar motoruna dokunmaz.
+    home_candidates = build_coupon_candidates(next7, completed)
+    home_odds = home_candidates.copy()
+    try:
+        from coupon_odds_v318 import enrich_coupon
+        if not home_candidates.empty:
+            home_odds = enrich_coupon(home_candidates.copy())
+    except Exception:
+        # Oran defteri geçici olarak okunamazsa ana sayfa yine çalışmaya devam eder.
+        home_odds = home_candidates.copy()
+
+    locked_count = 0
+    if not home_odds.empty and "Oran" in home_odds.columns:
+        locked_count = int(pd.to_numeric(home_odds["Oran"], errors="coerce").notna().sum())
+
+    d1, d2, d3, d4 = st.columns(4)
+    d1.metric("7 günlük maç", len(next7))
+    d2.metric("ANA SEÇİM", len(home_candidates))
+    d3.metric("Oranı kilitli", locked_count)
+    d4.metric("15 günlük maç", len(next15))
+
+    st.markdown("### ⭐ Yaklaşan ANA SEÇİMLER")
+    if home_candidates.empty:
+        st.info("Önümüzdeki 7 günde V3.14 ANA SEÇİM şartlarını geçen açık maç yok.")
     else:
-        for _, row in next15.iterrows():
+        show = home_odds.copy()
+        show["Tarih"] = pd.to_datetime(show["Tarih"], errors="coerce").dt.strftime("%d.%m.%Y %H:%M")
+        cols = ["Tarih", "Maç", "Pazar", "Model %", "Backtest %", "Destek"]
+        if "Oran" in show.columns:
+            cols.append("Oran")
+        if "Kaynak" in show.columns:
+            cols.append("Kaynak")
+        elif "Oran Kaynağı" in show.columns:
+            cols.append("Oran Kaynağı")
+        st.dataframe(show[[c for c in cols if c in show.columns]], hide_index=True, use_container_width=True)
+        st.caption("Oran sütunu yalnızca daha önce kilitlenmiş gerçek pre-match oran varsa gösterilir; yeni oran çağrısı yapılmaz.")
+
+    st.markdown("### 📅 Sıradaki maçlar")
+    if next7.empty:
+        st.info("Önümüzdeki 7 gün içinde kayıtlı maç yok.")
+    else:
+        for _, row in next7.sort_values("datetime").head(5).iterrows():
             match_card(row)
+        if len(next7) > 5:
+            st.caption(f"İlk 5 maç gösteriliyor • Önümüzdeki 7 günde toplam {len(next7)} maç var.")
 
 elif menu == "📅 Fikstür":
     st.subheader("Süper Lig Fikstürü")
@@ -1817,4 +1859,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.44 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.45 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
