@@ -714,7 +714,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.45</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.44</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -948,56 +948,12 @@ def _v333_open_match_analysis(home, away, dt_iso):
 menu = st.radio("Bölüm seç",["🏠 Ana Sayfa","📅 Fikstür","📊 Maç Analizi","🛡️ Takım Analizi","🎟️ Kupon Merkezi","👤 Hesabım","📒 Canlı Takip","📈 Model Performansı","🧪 Backtest","⚙️ Ayarlar"],horizontal=True,key="main_menu")
 
 if menu == "🏠 Ana Sayfa":
-    st.subheader("🏠 Kontrol Paneli • V3.45")
-    st.caption("Yaklaşan maçlar, V3.14 ANA SEÇİMLERİ ve daha önce kilitlenmiş gerçek oranlar tek ekranda. Karar motoru ve sonuçlandırma mantığı değiştirilmemiştir.")
-
-    # V3.45 ana sayfa yalnızca mevcut katmanları OKUR; karar motoruna dokunmaz.
-    home_candidates = build_coupon_candidates(next7, completed)
-    home_odds = home_candidates.copy()
-    try:
-        from coupon_odds_v318 import enrich_coupon
-        if not home_candidates.empty:
-            enriched, odds_meta = enrich_coupon(home_candidates.copy())
-            if isinstance(enriched, pd.DataFrame):
-                home_odds = enriched
-    except Exception:
-        # Oran defteri geçici olarak okunamazsa ana sayfa yine çalışmaya devam eder.
-        home_odds = home_candidates.copy()
-
-    locked_count = 0
-    if isinstance(home_odds, pd.DataFrame) and not home_odds.empty and "Maç Önü Oran" in home_odds.columns:
-        locked_count = int(pd.to_numeric(home_odds["Maç Önü Oran"], errors="coerce").notna().sum())
-
-    d1, d2, d3, d4 = st.columns(4)
-    d1.metric("7 günlük maç", len(next7))
-    d2.metric("ANA SEÇİM", len(home_candidates))
-    d3.metric("Oranı kilitli", locked_count)
-    d4.metric("15 günlük maç", len(next15))
-
-    st.markdown("### ⭐ Yaklaşan ANA SEÇİMLER")
-    if home_candidates.empty:
-        st.info("Önümüzdeki 7 günde V3.14 ANA SEÇİM şartlarını geçen açık maç yok.")
+    st.subheader("Önümüzdeki 15 Günün Maçları")
+    if next15.empty:
+        st.info("Önümüzdeki 15 gün içinde kayıtlı maç yok.")
     else:
-        show = home_odds.copy()
-        show["Tarih"] = pd.to_datetime(show["Tarih"], errors="coerce").dt.strftime("%d.%m.%Y %H:%M")
-        cols = ["Tarih", "Maç", "Pazar", "Model %", "Backtest %", "Destek"]
-        if "Maç Önü Oran" in show.columns:
-            cols.append("Maç Önü Oran")
-        if "Kaynak" in show.columns:
-            cols.append("Kaynak")
-        elif "Oran Kaynağı" in show.columns:
-            cols.append("Oran Kaynağı")
-        st.dataframe(show[[c for c in cols if c in show.columns]], hide_index=True, use_container_width=True)
-        st.caption("Oran sütunu yalnızca daha önce kilitlenmiş gerçek pre-match oran varsa gösterilir; yeni oran çağrısı yapılmaz.")
-
-    st.markdown("### 📅 Sıradaki maçlar")
-    if next7.empty:
-        st.info("Önümüzdeki 7 gün içinde kayıtlı maç yok.")
-    else:
-        for _, row in next7.sort_values("datetime").head(5).iterrows():
+        for _, row in next15.iterrows():
             match_card(row)
-        if len(next7) > 5:
-            st.caption(f"İlk 5 maç gösteriliyor • Önümüzdeki 7 günde toplam {len(next7)} maç var.")
 
 elif menu == "📅 Fikstür":
     st.subheader("Süper Lig Fikstürü")
@@ -1256,7 +1212,31 @@ elif menu == "🛡️ Takım Analizi":
     render_team_analysis(matches, completed, current_season, future, league_table_before)
 
 elif menu == "🎟️ Kupon Merkezi":
-    st.subheader("🎟️ Kupon Merkezi • V3.44")
+    st.subheader("🎟️ Kupon Merkezi • V3.46")
+    st.markdown("""<style>
+    /* V3.46 Kupon Merkezi - mobile-first presentation only */
+    .coupon-kicker{font-size:.78rem;font-weight:800;letter-spacing:.08em;color:#43e39d;text-transform:uppercase;margin-bottom:.25rem}
+    .coupon-title{font-size:1.28rem;font-weight:850;color:#fff;margin:.2rem 0 .8rem}
+    .coupon-leg{background:linear-gradient(135deg,#10253c,#0d2035);border:1px solid #284763;border-radius:14px;padding:14px;margin:9px 0}
+    .coupon-leg-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+    .coupon-match{font-size:1rem;font-weight:800;color:#fff;line-height:1.3}
+    .coupon-date{font-size:.78rem;color:#9fb1c2;margin-top:4px}
+    .coupon-pick{display:inline-block;background:#0f7a5c;color:#fff;font-size:1rem;font-weight:900;padding:7px 12px;border-radius:10px;white-space:nowrap}
+    .coupon-meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:.8rem;color:#c9d5e0}
+    .coupon-meta b{color:#fff}
+    .coupon-odd{color:#43e39d!important}
+    .coupon-rule{background:#0d2943;border-left:4px solid #43e39d;border-radius:10px;padding:11px 13px;margin:8px 0 14px;color:#dce8f2;font-size:.88rem}
+    .coupon-note{font-size:.78rem;color:#9fb1c2;line-height:1.45}
+    @media(max-width:700px){
+      .coupon-title{font-size:1.12rem}
+      .coupon-leg{padding:12px}
+      .coupon-match{font-size:.94rem}
+      .coupon-pick{font-size:.94rem;padding:6px 10px}
+      div[data-testid="stMetricValue"]{font-size:1.75rem!important}
+      div[data-testid="stMetricLabel"] p{font-size:.78rem!important}
+      .stButton>button{min-height:44px;font-size:.9rem!important}
+    }
+    </style>""", unsafe_allow_html=True)
     st.caption(
         "Motor önümüzdeki 7 günün maçlarını V3.14 Nihai Karar Motorundan geçirir. Kupona yalnızca ANA SEÇİM çıkan maçlar girebilir; aynı maçtan en fazla bir pazar alınır. Motor yeterli seçim bulamazsa kuponu zorla doldurmaz."
     )
@@ -1271,35 +1251,38 @@ elif menu == "🎟️ Kupon Merkezi":
     coupon = make_coupon(candidates, mode)
 
     if mode == "🛡️ Yüksek Olasılık":
-        st.info("Kural: ANA SEÇİM • model ≥%75 • backtest ≥%75 • en fazla 2 seçim.")
+        rule_text = "ANA SEÇİM • model ≥ %75 • backtest ≥ %75 • en fazla 2 ayak"
     elif mode == "⚖️ Dengeli":
-        st.info("Kural: ANA SEÇİM • model ≥%70 • backtest ≥%70 • en fazla 3 seçim.")
+        rule_text = "ANA SEÇİM • model ≥ %70 • backtest ≥ %70 • en fazla 3 ayak"
     else:
-        st.info("Kural: ANA SEÇİM • model ≥%65 • backtest ≥%65 • en fazla 4 seçim. Daha fazla ayak toplam kupon riskini artırır.")
+        rule_text = "ANA SEÇİM • model ≥ %65 • backtest ≥ %65 • en fazla 4 ayak • toplam risk daha yüksek"
+    st.markdown(f'<div class="coupon-rule"><b>{escape(mode)}</b><br>{escape(rule_text)}</div>', unsafe_allow_html=True)
 
     if coupon.empty:
         st.warning("Bu hafta seçtiğin profil için yeterince güçlü doğrulanmış sinyal yok. Motor kuponu zorla doldurmadı: PAS.")
     else:
-        st.markdown("### Bu Haftanın Otomatik Kuponu")
-        # V3.25: mobilde boş görünen Arrow/DataFrame hücrelerini önlemek için
-        # kupon tablosunu yalnızca ekranda gösterilecek sade değerlerle yeniden kuruyoruz.
-        coupon_rows = []
+        st.markdown('<div class="coupon-kicker">Haftalık otomatik seçim</div><div class="coupon-title">🎟️ Bu Haftanın Otomatik Kuponu</div>', unsafe_allow_html=True)
+        # V3.46: aynı veriyi mobilde okunaklı kartlarla sunar; seçim mantığı değişmez.
         for _, row in coupon.iterrows():
             dt = pd.to_datetime(row.get("Tarih"), errors="coerce")
-            coupon_rows.append({
-                "Tarih": dt.strftime("%d.%m.%Y %H:%M") if not pd.isna(dt) else "—",
-                "Maç": str(row.get("Maç", "—")),
-                "Pazar Grubu": str(row.get("Pazar Grubu", "—")),
-                "Pazar": str(row.get("Pazar", "—")),
-                "Model %": f"%{float(row.get('Model %', 0)):.1f}",
-                "Backtest %": round(float(row.get("Backtest %", 0)), 1),
-                "Destek": int(row.get("Destek", 0)),
-            })
-        show = pd.DataFrame(coupon_rows)
-        st.dataframe(show, hide_index=True, use_container_width=True)
+            date_text = dt.strftime("%d.%m.%Y • %H:%M") if not pd.isna(dt) else "—"
+            match_text = escape(str(row.get("Maç", "—")))
+            pick_text = escape(str(row.get("Pazar", "—")))
+            group_text = escape(str(row.get("Pazar Grubu", "—")))
+            model_text = f"%{float(row.get('Model %', 0)):.1f}"
+            bt_val = row.get("Backtest %")
+            bt_text = "—" if pd.isna(bt_val) else f"%{float(bt_val):.1f}"
+            support_text = str(int(row.get("Destek", 0)))
+            st.markdown(
+                f'<div class="coupon-leg"><div class="coupon-leg-top">'
+                f'<div><div class="coupon-match">{match_text}</div><div class="coupon-date">📅 {date_text} • {group_text}</div></div>'
+                f'<div class="coupon-pick">{pick_text}</div></div>'
+                f'<div class="coupon-meta"><span>Model <b>{model_text}</b></span><span>Backtest <b>{bt_text}</b></span><span>Destek <b>{support_text}</b></span></div></div>',
+                unsafe_allow_html=True
+            )
 
         # V3.34: Kupondaki maçı tek dokunuşla ayrıntılı Maç Analizine aç.
-        st.markdown("#### 🔗 Kupondan Maç Analizine")
+        st.markdown("#### 🔗 Maç detayını aç")
         coupon_nav_options = list(range(len(coupon)))
         nav_i = st.selectbox(
             "Analizini açacağın maç",
@@ -1340,7 +1323,7 @@ elif menu == "🎟️ Kupon Merkezi":
         try:
             from coupon_odds_v318 import enrich_coupon, combined_odds
             coupon, odds_info = enrich_coupon(coupon)
-            st.markdown("#### 💰 V3.44 • Gerçek oranlı kupon hesabı")
+            st.markdown("#### 💰 Gerçek oranlı kupon")
             if odds_info.get("error"):
                 st.caption(odds_info["error"])
 
@@ -1406,164 +1389,166 @@ elif menu == "🎟️ Kupon Merkezi":
         except Exception as exc:
             st.warning("V3.21 kupon kaydı: " + str(exc)[:180])
 
-    st.markdown("### Uygun Sinyaller")
-    if candidates.empty:
-        st.write("Önümüzdeki 7 günde V3.14 motorundan geçen ANA SEÇİM bulunamadı.")
-    else:
-        show_all = candidates.copy()
-        show_all["Tarih"] = show_all["Tarih"].dt.strftime("%d.%m.%Y %H:%M")
-        show_all["Model %"] = show_all["Model %"].map(lambda x: f"%{x:.1f}")
-        st.dataframe(show_all, hide_index=True, use_container_width=True)
+    with st.expander("📋 Tüm uygun ANA SEÇİMLER", expanded=False):
+        if candidates.empty:
+            st.write("Önümüzdeki 7 günde V3.14 motorundan geçen ANA SEÇİM bulunamadı.")
+        else:
+            show_all = candidates.copy()
+            show_all["Tarih"] = show_all["Tarih"].dt.strftime("%d.%m.%Y %H:%M")
+            show_all["Model %"] = show_all["Model %"].map(lambda x: f"%{x:.1f}")
+            compact_cols = [c for c in ["Tarih","Maç","Pazar","Model %","Backtest %","Destek"] if c in show_all.columns]
+            st.dataframe(show_all[compact_cols], hide_index=True, use_container_width=True)
 
     st.warning(
         "Model olasılık üretir; garanti vermez. Backtest isabeti kârlılık değildir. "
         "Otomatik oran OddsPapi ile yalnızca doğrulanmış maç ve pazarlarda denenir; geçmiş kârlılık doğrulanmadı."
     )
 
-    st.markdown("### 🎯 V3.14 – AL / PAS Value Karar Motoru")
-    st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
-    key = api_key()
-    if not key:
-        st.info("Otomatik oran için Streamlit Secrets içine ODDSPAPI_KEY ekle. Şimdilik elle oran girebilirsin.")
-    elif st.button("🔄 Güncel oranları sorgula (API kotası kullanır)", key="load_live_odds"):
-        st.session_state["auto_odds"] = {}
-        st.session_state["auto_status"] = {}
-        with st.spinner("OddsPapi Süper Lig ve maç eşleşmeleri kontrol ediliyor..."):
-            try:
-                tournament = odds_papi_tournament(key)
-                if tournament is None:
-                    st.warning("OddsPapi hesabında Türkiye Süper Lig turnuvası bulunamadı. Oran uydurulmadı.")
-                else:
-                    # Limit to coupon dates: unbounded endpoint includes old seasons (2024+).
-                    if coupon.empty:
-                        st.info("Kuponda maç olmadığı için oran sorgulanmadı.")
-                        fixtures = []
+    with st.expander("🧪 Gelişmiş / deneysel AL-PAS araçları", expanded=False):
+        st.caption("Bu bölüm ileri düzey kontrol içindir; ana kupon ve kilitli oran sisteminden ayrıdır.")
+        st.caption("OddsPapi bağlantısı isteğe bağlıdır. Oranlar yalnızca doğrulanan maç ve tam 1.5 gol pazarı için kullanılır; veri yoksa oran uydurulmaz.")
+        key = api_key()
+        if not key:
+            st.info("Otomatik oran için Streamlit Secrets içine ODDSPAPI_KEY ekle. Şimdilik elle oran girebilirsin.")
+        elif st.button("🔄 Güncel oranları sorgula (API kotası kullanır)", key="load_live_odds"):
+            st.session_state["auto_odds"] = {}
+            st.session_state["auto_status"] = {}
+            with st.spinner("OddsPapi Süper Lig ve maç eşleşmeleri kontrol ediliyor..."):
+                try:
+                    tournament = odds_papi_tournament(key)
+                    if tournament is None:
+                        st.warning("OddsPapi hesabında Türkiye Süper Lig turnuvası bulunamadı. Oran uydurulmadı.")
                     else:
-                        date_values = pd.to_datetime(coupon["Tarih"], dayfirst=True, errors="coerce").dropna()
-                        if date_values.empty:
-                            raise ValueError("Kupon maç tarihleri okunamadı")
-                        start = (date_values.min() - pd.Timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
-                        end = (date_values.max() + pd.Timedelta(days=2)).strftime("%Y-%m-%dT00:00:00Z")
-                        fixtures = odds_papi_get("fixtures", {"tournamentId": tournament, "from": start, "to": end, "language": "en", "statusId": 0}, key)
-                    if not isinstance(fixtures, list):
-                        raise ValueError("Fikstür yanıtı beklenen biçimde değil")
-                    st.session_state["odds_diag"] = {
-                        "turnuva": tournament,
-                        "mac_sayisi": len(fixtures),
-                        "ornekler": [
-                            {"Tarih (UTC)": str(f.get("startTime", ""))[:16],
-                             "Ev": f.get("participant1Name", ""),
-                             "Deplasman": f.get("participant2Name", ""),
-                             "Oran verisi işareti": f.get("hasOdds", ""),
-                             "Durum": f.get("statusId", "")}
-                            for f in fixtures if isinstance(f, dict)
-                        ][:80],
-                    }
-                    st.session_state["odds_diag"]["aralik"] = f"{start} → {end}" if not coupon.empty else "Kupon boş"
-                    st.session_state["odds_diag"]["eslesme"] = []
-                    for _, item in coupon.iterrows():
-                        item_key = f'{item["Maç"]}|{item["Pazar"]}'
-                        if item.get("Pazar Grubu", "") != "1.5 Gol":
-                            st.session_state["auto_status"][item_key] = "Otomatik oran entegrasyonu şimdilik yalnızca 1.5 gol pazarı için açık."
-                            continue
-                        fixture = find_exact_fixture(item, fixtures)
-                        if fixture is None:
-                            st.session_state["auto_status"][item_key] = "2026 tarih aralığında doğrulanmış maç bulunamadı; oran yok."
-                            continue
-                        st.session_state["odds_diag"]["eslesme"].append(item["Maç"])
-                        try:
-                            odds = odds_papi_get("odds", {"fixtureId": fixture, "oddsFormat": "decimal", "language": "en"}, key)
-                            match_odd = extract_market_odds(odds, item["Pazar"])
-                            if match_odd:
-                                st.session_state["auto_odds"][item_key] = match_odd
-                                st.session_state["auto_status"][item_key] = "Doğrulanmış 1.5 gol oranı bulundu"
-                            else:
-                                st.session_state["auto_status"][item_key] = "Maç eşleşti ancak aktif 1.5 gol fiyatı bulunamadı (hasOdds diğer pazarları da kapsar)."
-                        except Exception as exc:
-                            st.session_state["auto_status"][item_key] = str(exc)[:110]
-            except Exception as exc:
-                st.error("OddsPapi bağlantısı: " + str(exc)[:130])
-    if st.session_state.get("odds_diag"):
-        with st.expander("🔎 OddsPapi tanılama – API gerçekten hangi maçları gönderiyor?", expanded=True):
-            diag = st.session_state["odds_diag"]
-            st.write(f"Türkiye turnuva ID: {diag['turnuva']} | API maç sayısı: {diag['mac_sayisi']}")
-            st.caption("Sorgu aralığı (UTC): " + diag.get("aralik", "—"))
-            st.caption("Eşleşen kupon maçları: " + (", ".join(diag.get("eslesme", [])) or "Henüz yok"))
-            if diag["ornekler"]:
-                st.dataframe(pd.DataFrame(diag["ornekler"]), hide_index=True, use_container_width=True)
-                st.caption("Bu tabloda API anahtarı veya gizli bilgi bulunmaz. Ekran görüntüsünü paylaşabilirsin.")
-            else:
-                st.warning("API turnuvayı buldu ancak maç listesi boş. Bu durumda isim eşleştirme değişikliği çözüm olmaz.")
-    if coupon.empty:
-        st.info("Önce kupon için uygun maç bulunmalı.")
-    else:
-        value_rows = []
-        for pos, (_, item) in enumerate(coupon.iterrows(), start=1):
-            item_key = f'{item["Maç"]}|{item["Pazar"]}'
-            auto = st.session_state.get("auto_odds", {}).get(item_key)
-            status = st.session_state.get("auto_status", {}).get(item_key)
-            if auto:
-                st.success(f'{item["Maç"]} • {item["Pazar"]}: {auto[0]:.2f} ({auto[1]}) • API kaynağı')
-            elif status:
-                st.caption(f'{item["Maç"]}: {status}')
-            label = f'{pos}. {item["Maç"]} — {item["Pazar"]} (model %{item["Model %"]:.1f})'
-            manual = st.number_input(label + " | Elle oran (0 = otomatik varsa onu kullan)",
-                                     min_value=0.0, max_value=100.0, value=0.0, step=0.01,
-                                     format="%.2f", key=f'odd_{mode}_{item["Maç"]}_{item["Pazar"]}')
-            odd = manual if manual >= 1.01 else (auto[0] if auto else 0.0)
-            if 0 < manual < 1.01:
-                st.warning("Oran en az 1,01 olmalı.")
-            if odd >= 1.01:
-                prob = float(item["Model %"]) / 100
-                fair_odd = 1 / prob
-                implied = 1 / odd
-                edge_pp = (prob - implied) * 100
-                ev_pct = (prob * odd - 1) * 100
-
-                # V1.9 karar kuralı: yalnızca modelin zaten bağımsız testte
-                # doğrulanmış ana 1.5 pazarını değerlendir. Model yüzdesi kalibre
-                # edilmiş gerçek olasılık olmadığı için agresif eşikler kullanılır.
-                if item["Pazar"] not in ("1.5 Üst", "1.5 Alt"):
-                    decision, reason = "PAS", "Ana doğrulanmış 1.5 pazarı değil"
-                elif prob < 0.65:
-                    decision, reason = "PAS", "Model güveni %65 altında"
-                elif ev_pct >= 15 and edge_pp >= 7:
-                    decision, reason = "AL ADAYI", "EV ≥ %15 ve model-piyasa farkı ≥ 7 puan"
+                        # Limit to coupon dates: unbounded endpoint includes old seasons (2024+).
+                        if coupon.empty:
+                            st.info("Kuponda maç olmadığı için oran sorgulanmadı.")
+                            fixtures = []
+                        else:
+                            date_values = pd.to_datetime(coupon["Tarih"], dayfirst=True, errors="coerce").dropna()
+                            if date_values.empty:
+                                raise ValueError("Kupon maç tarihleri okunamadı")
+                            start = (date_values.min() - pd.Timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+                            end = (date_values.max() + pd.Timedelta(days=2)).strftime("%Y-%m-%dT00:00:00Z")
+                            fixtures = odds_papi_get("fixtures", {"tournamentId": tournament, "from": start, "to": end, "language": "en", "statusId": 0}, key)
+                        if not isinstance(fixtures, list):
+                            raise ValueError("Fikstür yanıtı beklenen biçimde değil")
+                        st.session_state["odds_diag"] = {
+                            "turnuva": tournament,
+                            "mac_sayisi": len(fixtures),
+                            "ornekler": [
+                                {"Tarih (UTC)": str(f.get("startTime", ""))[:16],
+                                 "Ev": f.get("participant1Name", ""),
+                                 "Deplasman": f.get("participant2Name", ""),
+                                 "Oran verisi işareti": f.get("hasOdds", ""),
+                                 "Durum": f.get("statusId", "")}
+                                for f in fixtures if isinstance(f, dict)
+                            ][:80],
+                        }
+                        st.session_state["odds_diag"]["aralik"] = f"{start} → {end}" if not coupon.empty else "Kupon boş"
+                        st.session_state["odds_diag"]["eslesme"] = []
+                        for _, item in coupon.iterrows():
+                            item_key = f'{item["Maç"]}|{item["Pazar"]}'
+                            if item.get("Pazar Grubu", "") != "1.5 Gol":
+                                st.session_state["auto_status"][item_key] = "Otomatik oran entegrasyonu şimdilik yalnızca 1.5 gol pazarı için açık."
+                                continue
+                            fixture = find_exact_fixture(item, fixtures)
+                            if fixture is None:
+                                st.session_state["auto_status"][item_key] = "2026 tarih aralığında doğrulanmış maç bulunamadı; oran yok."
+                                continue
+                            st.session_state["odds_diag"]["eslesme"].append(item["Maç"])
+                            try:
+                                odds = odds_papi_get("odds", {"fixtureId": fixture, "oddsFormat": "decimal", "language": "en"}, key)
+                                match_odd = extract_market_odds(odds, item["Pazar"])
+                                if match_odd:
+                                    st.session_state["auto_odds"][item_key] = match_odd
+                                    st.session_state["auto_status"][item_key] = "Doğrulanmış 1.5 gol oranı bulundu"
+                                else:
+                                    st.session_state["auto_status"][item_key] = "Maç eşleşti ancak aktif 1.5 gol fiyatı bulunamadı (hasOdds diğer pazarları da kapsar)."
+                            except Exception as exc:
+                                st.session_state["auto_status"][item_key] = str(exc)[:110]
+                except Exception as exc:
+                    st.error("OddsPapi bağlantısı: " + str(exc)[:130])
+        if st.session_state.get("odds_diag"):
+            with st.expander("🔎 OddsPapi tanılama – API gerçekten hangi maçları gönderiyor?", expanded=True):
+                diag = st.session_state["odds_diag"]
+                st.write(f"Türkiye turnuva ID: {diag['turnuva']} | API maç sayısı: {diag['mac_sayisi']}")
+                st.caption("Sorgu aralığı (UTC): " + diag.get("aralik", "—"))
+                st.caption("Eşleşen kupon maçları: " + (", ".join(diag.get("eslesme", [])) or "Henüz yok"))
+                if diag["ornekler"]:
+                    st.dataframe(pd.DataFrame(diag["ornekler"]), hide_index=True, use_container_width=True)
+                    st.caption("Bu tabloda API anahtarı veya gizli bilgi bulunmaz. Ekran görüntüsünü paylaşabilirsin.")
                 else:
-                    decision, reason = "PAS", "Value eşiği sağlanmadı"
-
-                value_rows.append({"Maç": item["Maç"], "Seçim": item["Pazar"],
-                    "Model %": round(prob * 100, 1), "Oran": round(odd, 2),
-                    "Kaynak": "Elle" if manual >= 1.01 else "OddsPapi",
-                    "Adil oran*": round(fair_odd, 2), "Piyasa ima %": round(implied * 100, 1),
-                    "Fark (puan)*": round(edge_pp, 1), "Teorik EV %*": round(ev_pct, 1),
-                    "Karar*": decision, "Neden": reason})
-        if value_rows:
-            value_df = pd.DataFrame(value_rows)
-            st.markdown("#### 🎯 V3.14 kararları")
-            st.dataframe(value_df, hide_index=True, use_container_width=True)
-            al_count = int((value_df["Karar*"] == "AL ADAYI").sum())
-            pas_count = int((value_df["Karar*"] == "PAS").sum())
-            c1, c2 = st.columns(2)
-            c1.metric("AL adayı", al_count)
-            c2.metric("PAS", pas_count)
-            if al_count:
-                st.success("AL ADAYI = model ve mevcut oran V3.14 value eşiğini geçti. Bu bir bahis tavsiyesi veya kâr garantisi değildir.")
-            else:
-                st.info("Bu kuponda V3.14 value eşiğini geçen seçim yok: PAS.")
-            if len(value_rows) == len(coupon):
-                combined_odds = 1.0
-                for row in value_rows:
-                    combined_odds *= row["Oran"]
-                st.metric("Toplam kupon oranı", f"{combined_odds:.2f}")
-                st.caption("Birleşik teorik EV gösterimi V3.14'da kaldırıldı; model yüzdeleri kalibre edilmiş kesin olasılıklar değildir.")
-            else:
-                st.caption("Toplam oran için tüm seçimlerde gerçek oran bulunmalı.")
+                    st.warning("API turnuvayı buldu ancak maç listesi boş. Bu durumda isim eşleştirme değişikliği çözüm olmaz.")
+        if coupon.empty:
+            st.info("Önce kupon için uygun maç bulunmalı.")
         else:
-            st.info("Otomatik oran bulunamadı. OddsPapi erişimini kontrol et veya gerçek oranı elle gir.")
-        st.warning("*V3.14 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
-                   "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
-                   "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
+            value_rows = []
+            for pos, (_, item) in enumerate(coupon.iterrows(), start=1):
+                item_key = f'{item["Maç"]}|{item["Pazar"]}'
+                auto = st.session_state.get("auto_odds", {}).get(item_key)
+                status = st.session_state.get("auto_status", {}).get(item_key)
+                if auto:
+                    st.success(f'{item["Maç"]} • {item["Pazar"]}: {auto[0]:.2f} ({auto[1]}) • API kaynağı')
+                elif status:
+                    st.caption(f'{item["Maç"]}: {status}')
+                label = f'{pos}. {item["Maç"]} — {item["Pazar"]} (model %{item["Model %"]:.1f})'
+                manual = st.number_input(label + " | Elle oran (0 = otomatik varsa onu kullan)",
+                                         min_value=0.0, max_value=100.0, value=0.0, step=0.01,
+                                         format="%.2f", key=f'odd_{mode}_{item["Maç"]}_{item["Pazar"]}')
+                odd = manual if manual >= 1.01 else (auto[0] if auto else 0.0)
+                if 0 < manual < 1.01:
+                    st.warning("Oran en az 1,01 olmalı.")
+                if odd >= 1.01:
+                    prob = float(item["Model %"]) / 100
+                    fair_odd = 1 / prob
+                    implied = 1 / odd
+                    edge_pp = (prob - implied) * 100
+                    ev_pct = (prob * odd - 1) * 100
+
+                    # V1.9 karar kuralı: yalnızca modelin zaten bağımsız testte
+                    # doğrulanmış ana 1.5 pazarını değerlendir. Model yüzdesi kalibre
+                    # edilmiş gerçek olasılık olmadığı için agresif eşikler kullanılır.
+                    if item["Pazar"] not in ("1.5 Üst", "1.5 Alt"):
+                        decision, reason = "PAS", "Ana doğrulanmış 1.5 pazarı değil"
+                    elif prob < 0.65:
+                        decision, reason = "PAS", "Model güveni %65 altında"
+                    elif ev_pct >= 15 and edge_pp >= 7:
+                        decision, reason = "AL ADAYI", "EV ≥ %15 ve model-piyasa farkı ≥ 7 puan"
+                    else:
+                        decision, reason = "PAS", "Value eşiği sağlanmadı"
+
+                    value_rows.append({"Maç": item["Maç"], "Seçim": item["Pazar"],
+                        "Model %": round(prob * 100, 1), "Oran": round(odd, 2),
+                        "Kaynak": "Elle" if manual >= 1.01 else "OddsPapi",
+                        "Adil oran*": round(fair_odd, 2), "Piyasa ima %": round(implied * 100, 1),
+                        "Fark (puan)*": round(edge_pp, 1), "Teorik EV %*": round(ev_pct, 1),
+                        "Karar*": decision, "Neden": reason})
+            if value_rows:
+                value_df = pd.DataFrame(value_rows)
+                st.markdown("#### 🎯 V3.14 kararları")
+                st.dataframe(value_df, hide_index=True, use_container_width=True)
+                al_count = int((value_df["Karar*"] == "AL ADAYI").sum())
+                pas_count = int((value_df["Karar*"] == "PAS").sum())
+                c1, c2 = st.columns(2)
+                c1.metric("AL adayı", al_count)
+                c2.metric("PAS", pas_count)
+                if al_count:
+                    st.success("AL ADAYI = model ve mevcut oran V3.14 value eşiğini geçti. Bu bir bahis tavsiyesi veya kâr garantisi değildir.")
+                else:
+                    st.info("Bu kuponda V3.14 value eşiğini geçen seçim yok: PAS.")
+                if len(value_rows) == len(coupon):
+                    combined_odds = 1.0
+                    for row in value_rows:
+                        combined_odds *= row["Oran"]
+                    st.metric("Toplam kupon oranı", f"{combined_odds:.2f}")
+                    st.caption("Birleşik teorik EV gösterimi V3.14'da kaldırıldı; model yüzdeleri kalibre edilmiş kesin olasılıklar değildir.")
+                else:
+                    st.caption("Toplam oran için tüm seçimlerde gerçek oran bulunmalı.")
+            else:
+                st.info("Otomatik oran bulunamadı. OddsPapi erişimini kontrol et veya gerçek oranı elle gir.")
+            st.warning("*V3.14 AL/PAS etiketi deneysel bir filtre olup geçmiş bookmaker oranlarıyla kârlılık backtestinden geçmemiştir. Model yüzdeleri kalibre edilmiş kesin olasılıklar değildir. Pozitif EV kâr garantisi değildir. "
+                       "API oranı farklı bahis şirketlerinden gelebilir ve Türkiye'de erişilebilir olmayabilir. "
+                       "Oranlar değişebilir; kupon birleşik hesabı bağımsızlık varsayar.")
 
 elif menu == "👤 Hesabım":
     from account_v341 import render_account
@@ -1861,4 +1846,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.45 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.44 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
