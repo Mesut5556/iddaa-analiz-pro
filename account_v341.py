@@ -1,6 +1,6 @@
-"""V3.43 account + immutable coupon snapshot + guarded automatic settlement + settlement audit + duplicate-safe saving + safe deletion.
+"""V3.47 account UI polish + immutable coupon snapshot + guarded automatic settlement + settlement audit + duplicate-safe saving + safe deletion.
 Uses Supabase Auth/RLS. Settlement only consumes finished fixtures supplied by app.py.
-V3.43 does not alter the V3.14 decision engine or any locked pre-match odds.
+V3.47 does not alter the V3.14 decision engine or any locked pre-match odds.
 """
 import json
 import urllib.error
@@ -390,8 +390,8 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.43")
-    st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. V3.43 kupon yaşam döngüsü ve sonuç audit katmanı; V3.14 karar motoruna ve kilitli oranlara dokunmaz.")
+    st.subheader("👤 Hesabım • V3.47")
+    st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
@@ -424,7 +424,7 @@ def render_account(matches=None):
         try:
             settlement_info = settle_saved_coupons(matches)
             if settlement_info["updated"]:
-                st.success(f"V3.43: {settlement_info['updated']} kupon kaydı kesinleşmiş maç sonuçlarıyla güncellendi.")
+                st.success(f"{settlement_info['updated']} kupon kesinleşmiş maç sonuçlarıyla güncellendi.")
         except Exception as exc:
             settlement_error = str(exc)[:160]
             st.warning("Kupon sonuçlandırma geçici olarak tamamlanamadı: " + settlement_error)
@@ -450,12 +450,14 @@ def render_account(matches=None):
         st.success("Açık kupon bulunmuyor.")
     if st.button("🔄 Sonuçları şimdi yeniden kontrol et", use_container_width=True, key="v341_recheck"):
         st.rerun()
-    st.caption("V3.43 kontrolü yalnızca kesinleşmiş fikstür/skor verisini okur. Kayıtlı maç önü oranı, kupon tutarı ve seçimler değiştirilmez.")
+    st.caption("Yalnızca kesinleşmiş skorlar okunur; kayıtlı seçim, kupon tutarı ve kilitli maç önü oranı değiştirilmez.")
 
     st.markdown("### 📊 Kupon performansım")
     total=len(rows); open_n=sum(r.get("status")=="ACIK" for r in rows); won=sum(r.get("status")=="KAZANDI" for r in rows); lost=sum(r.get("status")=="KAYBETTI" for r in rows)
-    a,b,c,d=st.columns(4)
-    a.metric("Toplam", total); b.metric("Açık", open_n); c.metric("Kazandı", won); d.metric("Kaybetti", lost)
+    a,b=st.columns(2)
+    a.metric("Toplam kupon", total); b.metric("Açık kupon", open_n)
+    c,d=st.columns(2)
+    c.metric("Kazandı", won); d.metric("Kaybetti", lost)
 
     # V3.21: portfolio-level finance is rebuilt only from immutable save-time snapshots.
     total_staked = 0.0
@@ -490,9 +492,10 @@ def render_account(matches=None):
                 realized_gross_total += gross_fin or 0.0
 
     st.markdown("### 💰 Finansal performans")
-    f1,f2,f3,f4=st.columns(4)
+    f1,f2=st.columns(2)
     f1.metric("Kayıtlı toplam tutar", f"{total_staked:,.2f} TL" if financial_coupon_count else "—")
     f2.metric("Sonuçlanan yatırım", f"{settled_staked:,.2f} TL" if settled_financial_count else "—")
+    f3,f4=st.columns(2)
     f3.metric("Gerçekleşen dönüş", f"{realized_gross_total:,.2f} TL" if settled_financial_count else "—")
     f4.metric("Net kâr / zarar", f"{realized_net_total:+,.2f} TL" if settled_financial_count else "—")
     roi = (realized_net_total / settled_staked * 100.0) if settled_staked > 0 else None
@@ -518,12 +521,14 @@ def render_account(matches=None):
     weekly_lost = sum(r.get("status") == "KAYBETTI" for r in weekly_rows)
     weekly_settled = weekly_won + weekly_lost
     weekly_hit = (100.0 * weekly_won / weekly_settled) if weekly_settled else None
-    w1,w2,w3,w4,w5 = st.columns(5)
+    w1,w2,w3 = st.columns(3)
     w1.metric("Kaydedilen", weekly_total)
     w2.metric("Açık", weekly_open)
-    w3.metric("Kazandı", weekly_won)
-    w4.metric("Kaybetti", weekly_lost)
-    w5.metric("Kupon isabeti", f"%{weekly_hit:.1f}" if weekly_hit is not None else "—")
+    w3.metric("Sonuçlanan", weekly_settled)
+    w4,w5,w6 = st.columns(3)
+    w4.metric("Kazandı", weekly_won)
+    w5.metric("Kaybetti", weekly_lost)
+    w6.metric("Kupon isabeti", f"%{weekly_hit:.1f}" if weekly_hit is not None else "—")
 
     weekly_stake = 0.0
     weekly_net = 0.0
@@ -568,8 +573,11 @@ def render_account(matches=None):
         title=r.get("title") or "Kupon"
         created=str(r.get("created_at","")).replace("T"," ")[:16]
         st.markdown(f"#### {icon} {title}")
-        x1,x2,x3,x4=st.columns(4)
-        x1.metric("Durum", status); x2.metric("Ayak", len(legs)); x3.metric("Sonuçlanan", f"{done}/{len(legs)}"); x4.metric("Tip", str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ",""))
+        clean_mode = str(r.get("mode") or "—").replace("🛡️ ","").replace("⚖️ ","").replace("🔥 ","")
+        x1,x2=st.columns(2)
+        x1.metric("Durum", "AÇIK" if status == "ACIK" else status); x2.metric("Kupon tipi", clean_mode)
+        x3,x4=st.columns(2)
+        x3.metric("Ayak", len(legs)); x4.metric("Sonuçlanan", f"{done}/{len(legs)}")
         st.caption(f"Kayıt: {created}")
         # V3.37: coupon detail card. All figures come from the frozen save-time snapshot;
         # settlement continues to use the existing V3.16 logic without changing the decision engine.
@@ -586,10 +594,10 @@ def render_account(matches=None):
             saved_total = meta_leg.get("V3.19 Toplam Oran")
             saved_return = meta_leg.get("V3.19 Olası Brüt Dönüş")
             if saved_total is not None:
-                m1,m2,m3=st.columns(3)
-                m1.metric("Kayıtlı toplam oran", f"{float(saved_total):.2f}")
+                m1,m2=st.columns(2)
+                m1.metric("Toplam oran", f"{float(saved_total):.2f}")
                 m2.metric("Kupon tutarı", f"{float(saved_stake):,.2f} TL" if saved_stake is not None else "—")
-                m3.metric("Olası brüt dönüş", f"{float(saved_return):,.2f} TL" if saved_return is not None else "—")
+                st.metric("Olası brüt dönüş", f"{float(saved_return):,.2f} TL" if saved_return is not None else "—")
                 realized_net = meta_leg.get("V3.20 Net TL")
                 realized_gross = meta_leg.get("V3.20 Gerçekleşen Brüt Dönüş")
                 if realized_net is not None:
@@ -598,7 +606,7 @@ def render_account(matches=None):
                     r2.metric("Net sonuç", f"{float(realized_net):+,.2f} TL")
 
         audit = _settlement_audit(r)
-        with st.expander("🧾 V3.43 sonuçlandırma audit", expanded=(status in ("KAZANDI", "KAYBETTI"))):
+        with st.expander("🧾 Sonuçlandırma denetimi", expanded=(status in ("KAZANDI", "KAYBETTI"))):
             au1, au2, au3, au4 = st.columns(4)
             au1.metric("Ayak", audit["legs"])
             au2.metric("✅ Bildi", audit["won"])
@@ -655,7 +663,7 @@ def render_account(matches=None):
                         model=row.get("Model %","—")
                         backtest=row.get("Backtest %","—")
                         st.caption(f"Kaynak: {source} • Model: %{model} • Backtest: %{backtest}")
-                st.caption("V3.43: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
+                st.caption("Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
 
         # V3.42.1 safe per-coupon deletion: first click arms confirmation,
         # second click deletes only this user's exact coupon id.
