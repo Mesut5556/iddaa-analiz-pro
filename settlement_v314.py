@@ -23,7 +23,6 @@ def _cfg():
         key = str(
             st.secrets.get("SUPABASE_SECRET_KEY", "")
             or st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")
-            or st.secrets.get("SUPABASE_KEY", "")
         ).strip()
     except Exception:
         return "", ""

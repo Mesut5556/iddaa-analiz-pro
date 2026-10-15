@@ -16,8 +16,6 @@ def _cfg():
         key = str(
             st.secrets.get("SUPABASE_SECRET_KEY", "")
             or st.secrets.get("SUPABASE_SERVICE_ROLE_KEY", "")
-            or st.secrets.get("SUPABASE_KEY", "")
-            or st.secrets.get("SUPABASE_ANON_KEY", "")
         ).strip()
     except Exception:
         return "", ""
@@ -42,7 +40,7 @@ def _split_match(name):
 def load_locked_odds():
     url, key = _cfg()
     if not (url.startswith("https://") and key):
-        return [], "Supabase oran defteri ayarı bulunamadı."
+        return [], "Güvenli oran defteri bağlantısı yok: SUPABASE_SECRET_KEY / SUPABASE_SERVICE_ROLE_KEY gerekli."
     query = urllib.parse.urlencode({"select": "*", "order": "locked_at.asc"})
     req = urllib.request.Request(
         f"{url}/rest/v1/odds_records?{query}",
