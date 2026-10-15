@@ -390,8 +390,8 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.50.1")
-    st.caption("Kullanıcıya özel kupon geçmişi, performans özeti ve güvenli sonuç kontrolü. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
+    st.markdown("## 👤 Profesyonel Hesap Paneli • V3.52.0")
+    st.caption("Kullanıcıya özel kupon geçmişi, haftalık performans ve güvenli sonuç takibi tek ekranda. V3.14 karar motoru ve kilitli maç önü oranları değişmez.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
@@ -431,10 +431,12 @@ def render_account(matches=None):
 
     rows=list_coupons()
 
-    st.markdown("### 📊 Hesap özeti")
+    st.markdown("### 📊 Genel durum")
     total=len(rows); open_n=sum(r.get("status")=="ACIK" for r in rows); won=sum(r.get("status")=="KAZANDI" for r in rows); lost=sum(r.get("status")=="KAYBETTI" for r in rows)
-    a,b,c,d=st.columns(4)
-    a.metric("Toplam", total); b.metric("Açık", open_n); c.metric("Kazandı", won); d.metric("Kaybetti", lost)
+    a,b=st.columns(2)
+    a.metric("🎟️ Toplam kupon", total); b.metric("⏳ Açık kupon", open_n)
+    c,d=st.columns(2)
+    c.metric("🏆 Kazandı", won); d.metric("❌ Kaybetti", lost)
 
     # V3.21: portfolio-level finance is rebuilt only from immutable save-time snapshots.
     total_staked = 0.0
@@ -468,10 +470,11 @@ def render_account(matches=None):
                 realized_net_total += net_fin
                 realized_gross_total += gross_fin or 0.0
 
-    st.markdown("#### 💰 Finansal performans")
-    f1,f2,f3,f4=st.columns(4)
+    st.markdown("### 💰 Finansal performans")
+    f1,f2=st.columns(2)
     f1.metric("Kayıtlı toplam tutar", f"{total_staked:,.2f} TL" if financial_coupon_count else "—")
     f2.metric("Sonuçlanan yatırım", f"{settled_staked:,.2f} TL" if settled_financial_count else "—")
+    f3,f4=st.columns(2)
     f3.metric("Gerçekleşen dönüş", f"{realized_gross_total:,.2f} TL" if settled_financial_count else "—")
     f4.metric("Net kâr / zarar", f"{realized_net_total:+,.2f} TL" if settled_financial_count else "—")
     roi = (realized_net_total / settled_staked * 100.0) if settled_staked > 0 else None
@@ -479,7 +482,7 @@ def render_account(matches=None):
     st.caption("ROI yalnızca sonucu kesinleşmiş ve kayıt anında tutarı/oranı dondurulmuş kuponlardan hesaplanır. Açık kuponlar ROI'ye dahil edilmez.")
 
     # V3.50.1: compact settlement status; secondary to the user's performance dashboard.
-    st.markdown("#### 🔄 Otomatik sonuç kontrolü")
+    st.markdown("### 🔄 Otomatik sonuç kontrolü")
     open_after = sum(r.get("status") == "ACIK" for r in rows)
     finished_after = sum(r.get("status") in ("KAZANDI", "KAYBETTI") for r in rows)
     s1, s2, s3 = st.columns(3)
@@ -517,12 +520,13 @@ def render_account(matches=None):
     weekly_lost = sum(r.get("status") == "KAYBETTI" for r in weekly_rows)
     weekly_settled = weekly_won + weekly_lost
     weekly_hit = (100.0 * weekly_won / weekly_settled) if weekly_settled else None
-    w1,w2,w3,w4,w5 = st.columns(5)
+    w1,w2,w3 = st.columns(3)
     w1.metric("Kaydedilen", weekly_total)
     w2.metric("Açık", weekly_open)
-    w3.metric("Kazandı", weekly_won)
-    w4.metric("Kaybetti", weekly_lost)
-    w5.metric("Kupon isabeti", f"%{weekly_hit:.1f}" if weekly_hit is not None else "—")
+    w3.metric("Kupon isabeti", f"%{weekly_hit:.1f}" if weekly_hit is not None else "—")
+    w4,w5 = st.columns(2)
+    w4.metric("🏆 Kazandı", weekly_won)
+    w5.metric("❌ Kaybetti", weekly_lost)
 
     weekly_stake = 0.0
     weekly_net = 0.0
@@ -549,7 +553,8 @@ def render_account(matches=None):
     q2.metric("Haftalık ROI", f"%{weekly_roi:+.2f}" if weekly_roi is not None else "—")
     st.caption(f"Hafta: {week_start.strftime('%d.%m.%Y')} – {(week_end - pd.Timedelta(days=1)).strftime('%d.%m.%Y')}. Bekleyen kuponlar isabet ve ROI hesabına katılmaz.")
 
-    st.markdown("### 🎟️ Kuponlarım • ayrıntılı sonuç defteri")
+    st.markdown("### 🎟️ Kuponlarım")
+    st.caption("Kayıtlı kuponlarını durumuna göre filtreleyebilir, ayak ayrıntılarını ve sonuçlandırma auditini inceleyebilirsin.")
     if not rows:
         st.info("Henüz kayıtlı kupon yok. Kupon Merkezi'nden bir kuponu hesabına kaydedebilirsin."); return
 
