@@ -390,7 +390,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    # V3.47.3 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
+    # V3.47.4 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
     st.markdown("""<style>
     /* Hesabım: dark-theme form controls and mobile readability */
     div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
@@ -425,7 +425,7 @@ def render_account(matches=None):
       color:#ffffff!important;
       opacity:.72!important;
     }
-    /* V3.47.3: Streamlit/BaseWeb variants seen on current Community Cloud.
+    /* V3.47.4: Streamlit/BaseWeb variants seen on current Community Cloud.
        Scope stays inside stForm so other app buttons are untouched. */
     div[data-testid="stForm"] [data-testid="stFormSubmitButton"],
     div[data-testid="stForm"] [data-testid="stFormSubmitButton"] > div {
@@ -458,6 +458,31 @@ def render_account(matches=None):
       border-color:#43e39d!important;
       color:#ffffff!important;
     }
+    /* V3.47.4: login/signup now use normal primary buttons, avoiding the
+       mobile form-submit skin that remained white on Community Cloud. */
+    div[data-testid="stButton"] button[kind="primary"],
+    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"] {
+      background:#17324f!important;
+      background-color:#17324f!important;
+      border:1px solid #315778!important;
+      color:#ffffff!important;
+      opacity:1!important;
+      box-shadow:none!important;
+      font-weight:800!important;
+    }
+    div[data-testid="stButton"] button[kind="primary"] p,
+    div[data-testid="stButton"] button[kind="primary"] span,
+    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"] p,
+    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"] span {
+      color:#ffffff!important; opacity:1!important;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover,
+    div[data-testid="stButton"] button[data-testid="stBaseButton-primary"]:hover {
+      background:#1f466c!important;
+      background-color:#1f466c!important;
+      border-color:#43e39d!important;
+      color:#ffffff!important;
+    }
     div[data-testid="stForm"] [data-testid="stTextInput"] button {color:#eaf3fa!important;}
     @media(max-width:700px){
       div[data-testid="stMetric"] {background:#0d2035;border:1px solid #203c58;border-radius:12px;padding:10px 12px;min-height:92px;}
@@ -466,20 +491,30 @@ def render_account(matches=None):
       h3 {font-size:1.55rem!important;line-height:1.2!important;}
     }
     </style>""", unsafe_allow_html=True)
-    st.subheader("👤 Hesabım • V3.47.3")
+    st.subheader("👤 Hesabım • V3.47.4")
     st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
         with tab1:
-            with st.form("v318_login"):
-                email=st.text_input("E-posta"); password=st.text_input("Şifre", type="password"); go=st.form_submit_button("Giriş yap", use_container_width=True, type="primary")
+            # V3.47.4: regular Streamlit button is used instead of form-submit.
+            # Current Community Cloud applies an opaque disabled/form style to
+            # form_submit_button on some mobile browsers; this avoids that UI layer
+            # without changing authentication behavior.
+            email=st.text_input("E-posta", key="login_email")
+            password=st.text_input("Şifre", type="password", key="login_password")
+            go=st.button("Giriş yap", use_container_width=True, type="primary", key="login_button")
             if go:
-                try: sign_in(email,password); st.success("Giriş başarılı."); st.rerun()
-                except Exception as exc: st.error(str(exc))
+                if not email.strip() or not password:
+                    st.warning("E-posta ve şifre alanlarını doldur.")
+                else:
+                    try: sign_in(email,password); st.success("Giriş başarılı."); st.rerun()
+                    except Exception as exc: st.error(str(exc))
         with tab2:
-            with st.form("v318_signup"):
-                email=st.text_input("E-posta",key="signup_email"); password=st.text_input("Şifre (en az 6 karakter)",type="password",key="signup_password"); password2=st.text_input("Şifre tekrar",type="password"); go=st.form_submit_button("Hesap oluştur",use_container_width=True, type="primary")
+            email=st.text_input("E-posta",key="signup_email")
+            password=st.text_input("Şifre (en az 6 karakter)",type="password",key="signup_password")
+            password2=st.text_input("Şifre tekrar",type="password",key="signup_password2")
+            go=st.button("Hesap oluştur",use_container_width=True, type="primary", key="signup_button")
             if go:
                 if len(password)<6: st.error("Şifre en az 6 karakter olmalı.")
                 elif password!=password2: st.error("Şifreler aynı değil.")
