@@ -957,14 +957,16 @@ if menu == "🏠 Ana Sayfa":
     try:
         from coupon_odds_v318 import enrich_coupon
         if not home_candidates.empty:
-            home_odds = enrich_coupon(home_candidates.copy())
+            enriched, odds_meta = enrich_coupon(home_candidates.copy())
+            if isinstance(enriched, pd.DataFrame):
+                home_odds = enriched
     except Exception:
         # Oran defteri geçici olarak okunamazsa ana sayfa yine çalışmaya devam eder.
         home_odds = home_candidates.copy()
 
     locked_count = 0
-    if not home_odds.empty and "Oran" in home_odds.columns:
-        locked_count = int(pd.to_numeric(home_odds["Oran"], errors="coerce").notna().sum())
+    if isinstance(home_odds, pd.DataFrame) and not home_odds.empty and "Maç Önü Oran" in home_odds.columns:
+        locked_count = int(pd.to_numeric(home_odds["Maç Önü Oran"], errors="coerce").notna().sum())
 
     d1, d2, d3, d4 = st.columns(4)
     d1.metric("7 günlük maç", len(next7))
@@ -979,8 +981,8 @@ if menu == "🏠 Ana Sayfa":
         show = home_odds.copy()
         show["Tarih"] = pd.to_datetime(show["Tarih"], errors="coerce").dt.strftime("%d.%m.%Y %H:%M")
         cols = ["Tarih", "Maç", "Pazar", "Model %", "Backtest %", "Destek"]
-        if "Oran" in show.columns:
-            cols.append("Oran")
+        if "Maç Önü Oran" in show.columns:
+            cols.append("Maç Önü Oran")
         if "Kaynak" in show.columns:
             cols.append("Kaynak")
         elif "Oran Kaynağı" in show.columns:
