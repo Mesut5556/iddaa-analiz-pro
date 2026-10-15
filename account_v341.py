@@ -390,7 +390,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    # V3.47.5 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
+    # V3.47.6 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
     st.markdown("""<style>
     /* Hesabım: dark-theme form controls and mobile readability */
     div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
@@ -516,8 +516,51 @@ def render_account(matches=None):
       div[data-testid="stMetricValue"] {font-size:27px!important;}
       h3 {font-size:1.55rem!important;line-height:1.2!important;}
     }
+    /* V3.47.6 HARD FIX — mobile first-paint colors.
+       Deliberately broad inside Hesabım: Streamlit changed button/input attributes
+       between builds, so target the stable widget testids and BaseWeb wrappers. */
+    div[data-testid="stTextInput"] [data-baseweb="input"],
+    div[data-testid="stTextInput"] [data-baseweb="input"] > div,
+    div[data-testid="stTextInput"] [data-baseweb="base-input"],
+    div[data-testid="stTextInput"] [data-baseweb="base-input"] > div,
+    div[data-testid="stTextInput"] input {
+      background:#10253c !important;
+      background-color:#10253c !important;
+      color:#ffffff !important;
+      -webkit-text-fill-color:#ffffff !important;
+      border-color:#315778 !important;
+      opacity:1 !important;
+    }
+    div[data-testid="stTextInput"] svg {color:#eaf3fa !important;fill:#eaf3fa !important;}
+
+    /* Login/signup primary action: fixed navy in normal/hover/focus/active states. */
+    div[data-testid="stButton"] > button,
+    div[data-testid="stButton"] button,
+    button[data-testid^="stBaseButton-primary"] {
+      background:#17324f !important;
+      background-color:#17324f !important;
+      color:#ffffff !important;
+      border:1px solid #315778 !important;
+      opacity:1 !important;
+      box-shadow:none !important;
+    }
+    div[data-testid="stButton"] > button:hover,
+    div[data-testid="stButton"] > button:focus,
+    div[data-testid="stButton"] > button:focus-visible,
+    div[data-testid="stButton"] > button:active,
+    div[data-testid="stButton"] button:hover,
+    div[data-testid="stButton"] button:focus,
+    div[data-testid="stButton"] button:active {
+      background:#17324f !important;
+      background-color:#17324f !important;
+      color:#ffffff !important;
+      border-color:#315778 !important;
+      box-shadow:none !important;
+    }
+    div[data-testid="stButton"] button p,
+    div[data-testid="stButton"] button span {color:#ffffff !important;opacity:1 !important;}
     </style>""", unsafe_allow_html=True)
-    st.subheader("👤 Hesabım • V3.47.5")
+    st.subheader("👤 Hesabım • V3.47.6")
     st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
