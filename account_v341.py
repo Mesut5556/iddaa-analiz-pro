@@ -1,4 +1,4 @@
-"""V3.42 account + immutable coupon snapshot + guarded automatic settlement + duplicate-safe saving.
+"""V3.42.1 account + immutable coupon snapshot + guarded automatic settlement + duplicate-safe saving + safe deletion.
 Uses Supabase Auth/RLS. Settlement only consumes finished fixtures supplied by app.py.
 V3.41 does not alter the V3.14 decision engine or any locked pre-match odds.
 """
@@ -99,26 +99,62 @@ def coupon_payload(coupon):
 
 
 def _coupon_fingerprint_from_legs(legs):
-    """Stable identity for a logical coupon; ignores title/stake/odds metadata."""
+    """Canonical coupon identity: kickoff date/time + teams + pick.
+    Normalizes old/new saved payload formatting so the same coupon cannot be
+    inserted again merely because display metadata or date formatting changed.
+    """
     keys = []
     for leg in legs or []:
-        match = _norm(leg.get("Maç") or leg.get("Mac") or "")
-        market_group = _norm(leg.get("Pazar Grubu") or "")
-        pick = _norm(leg.get("Pazar") or leg.get("Seçim") or "")
-        dt = pd.to_datetime(leg.get("Tarih"), errors="coerce")
-        date_key = dt.strftime("%Y-%m-%dT%H:%M") if pd.notna(dt) else str(leg.get("Tarih") or "")
-        keys.append(f"{date_key}|{match}|{market_group}|{pick}")
-    raw = "||".join(sorted(keys))
+        if not isinstance(leg, dict):
+            continue
+        match = _norm(leg.get("Maç") or leg.get("Mac") or leg.get("match") or "")
+        pick = _norm(leg.get("Pazar") or leg.get("Seçim") or leg.get("Secim") or "")
+        raw_date = leg.get("Tarih") or leg.get("datetime") or leg.get("date") or ""
+        dt = pd.to_datetime(raw_date, errors="coerce", dayfirst=True)
+        date_key = dt.strftime("%Y-%m-%dT%H:%M") if pd.notna(dt) else _norm(raw_date)
+        if match and pick:
+            keys.append(f"{date_key}|{match}|{pick}")
+    raw = "||".join(sorted(set(keys)))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest() if raw else ""
 
 
-def _existing_coupon_by_fingerprint(fingerprint):
+def _stored_fingerprint(row):
+    legs = row.get("legs") if isinstance(row, dict) else None
+    if isinstance(legs, list) and legs and isinstance(legs[0], dict):
+        stored = str(legs[0].get("V3.42 Kupon Parmak İzi") or "").strip()
+        if stored:
+            return stored
+    return ""
+
+
+def _existing_coupon_by_fingerprint(fingerprint, legs=None):
     if not fingerprint:
         return None
+    target_fallback = _coupon_fingerprint_from_legs(legs or [])
     for row in list_coupons():
-        if _coupon_fingerprint_from_legs(row.get("legs") or []) == fingerprint:
+        # New canonical comparison is authoritative. Stored V3.42 fingerprint is
+        # retained as a backwards-compatible secondary check.
+        existing_legs = row.get("legs") or []
+        canonical = _coupon_fingerprint_from_legs(existing_legs)
+        if canonical and canonical == target_fallback:
+            return row
+        if _stored_fingerprint(row) == fingerprint:
             return row
     return None
+
+
+def delete_coupon(coupon_id):
+    """Delete exactly one coupon owned by the signed-in user (RLS + user_id guard)."""
+    user, token = current_user(), access_token()
+    if not user or not token:
+        raise ValueError("Kupon silmek için giriş yapmalısın.")
+    cid = str(coupon_id or "").strip()
+    if not cid:
+        raise ValueError("Silinecek kupon kimliği bulunamadı.")
+    _request("/rest/v1/saved_coupons", method="DELETE", token=token,
+             query={"id": f"eq.{cid}", "user_id": f"eq.{user['id']}"},
+             prefer="return=minimal")
+    return True
 
 
 def save_coupon(coupon, mode, title="", stake=None, total_odds=None):
@@ -130,7 +166,7 @@ def save_coupon(coupon, mode, title="", stake=None, total_odds=None):
     # V3.42: the same logical coupon may not be saved twice for the same user.
     # Identity uses kickoff + match + market group + pick, not title/stake/odds.
     fingerprint = _coupon_fingerprint_from_legs(legs)
-    existing = _existing_coupon_by_fingerprint(fingerprint)
+    existing = _existing_coupon_by_fingerprint(fingerprint, legs)
     if existing:
         return {"_v342_duplicate": True, "id": existing.get("id"), "title": existing.get("title"),
                 "status": existing.get("status"), "created_at": existing.get("created_at")}
@@ -337,8 +373,8 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.41")
-    st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. V3.42 güvenli kayıt/sonuçlandırma katmanı; V3.14 karar motoruna ve kilitli oranlara dokunmaz.")
+    st.subheader("👤 Hesabım • V3.42.1")
+    st.caption("Supabase Auth + kullanıcıya özel kupon geçmişi. V3.42.1 çift kayıt koruması + güvenli silme + sonuçlandırma katmanı; V3.14 karar motoruna ve kilitli oranlara dokunmaz.")
     user = current_user()
     if not user:
         tab1, tab2 = st.tabs(["🔐 Giriş yap", "✨ Hesap oluştur"])
@@ -585,5 +621,29 @@ def render_account(matches=None):
                         model=row.get("Model %","—")
                         backtest=row.get("Backtest %","—")
                         st.caption(f"Kaynak: {source} • Model: %{model} • Backtest: %{backtest}")
-                st.caption("V3.42: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
+                st.caption("V3.42.1: Her ayak yalnızca kayıtlı maç önü oranı ve kesinleşmiş fikstür/skor verisiyle gösterilir; bekleyen maç için sonuç üretilmez.")
+
+        # V3.42.1 safe per-coupon deletion: first click arms confirmation,
+        # second click deletes only this user's exact coupon id.
+        coupon_id = str(r.get("id") or "")
+        confirm_key = f"v3421_delete_confirm_{coupon_id}"
+        if coupon_id:
+            if not st.session_state.get(confirm_key, False):
+                if st.button("🗑️ Kuponu sil", key=f"v3421_delete_{coupon_id}", use_container_width=True):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
+            else:
+                st.warning(f"‘{title}’ kuponu kalıcı olarak silinsin mi?")
+                dc1, dc2 = st.columns(2)
+                if dc1.button("✅ Evet, sil", key=f"v3421_yes_{coupon_id}", use_container_width=True):
+                    try:
+                        delete_coupon(coupon_id)
+                        st.session_state.pop(confirm_key, None)
+                        st.success("Kupon silindi.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error("Kupon silinemedi: " + str(exc)[:160])
+                if dc2.button("↩️ Vazgeç", key=f"v3421_no_{coupon_id}", use_container_width=True):
+                    st.session_state.pop(confirm_key, None)
+                    st.rerun()
         st.divider()
