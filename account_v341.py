@@ -390,7 +390,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    st.subheader("👤 Hesabım • V3.50")
+    st.subheader("👤 Hesabım • V3.50.1")
     st.caption("Kullanıcıya özel kupon geçmişi, performans özeti ve güvenli sonuç kontrolü. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
@@ -431,7 +431,7 @@ def render_account(matches=None):
 
     rows=list_coupons()
 
-    st.markdown("### 📊 Kupon performansım")
+    st.markdown("### 📊 Hesap özeti")
     total=len(rows); open_n=sum(r.get("status")=="ACIK" for r in rows); won=sum(r.get("status")=="KAZANDI" for r in rows); lost=sum(r.get("status")=="KAYBETTI" for r in rows)
     a,b,c,d=st.columns(4)
     a.metric("Toplam", total); b.metric("Açık", open_n); c.metric("Kazandı", won); d.metric("Kaybetti", lost)
@@ -468,7 +468,7 @@ def render_account(matches=None):
                 realized_net_total += net_fin
                 realized_gross_total += gross_fin or 0.0
 
-    st.markdown("### 💰 Finansal performans")
+    st.markdown("#### 💰 Finansal performans")
     f1,f2,f3,f4=st.columns(4)
     f1.metric("Kayıtlı toplam tutar", f"{total_staked:,.2f} TL" if financial_coupon_count else "—")
     f2.metric("Sonuçlanan yatırım", f"{settled_staked:,.2f} TL" if settled_financial_count else "—")
@@ -478,8 +478,8 @@ def render_account(matches=None):
     st.metric("Sonuçlanan kupon ROI", f"%{roi:+.2f}" if roi is not None else "—")
     st.caption("ROI yalnızca sonucu kesinleşmiş ve kayıt anında tutarı/oranı dondurulmuş kuponlardan hesaplanır. Açık kuponlar ROI'ye dahil edilmez.")
 
-    # V3.50: compact settlement status; secondary to the user's performance dashboard.
-    st.markdown("### 🔄 Sonuç kontrolü")
+    # V3.50.1: compact settlement status; secondary to the user's performance dashboard.
+    st.markdown("#### 🔄 Otomatik sonuç kontrolü")
     open_after = sum(r.get("status") == "ACIK" for r in rows)
     finished_after = sum(r.get("status") in ("KAZANDI", "KAYBETTI") for r in rows)
     s1, s2, s3 = st.columns(3)
