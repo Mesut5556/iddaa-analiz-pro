@@ -390,7 +390,7 @@ def _leg_status(leg):
 
 
 def render_account(matches=None):
-    # V3.47.8 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
+    # V3.48.0 presentation-only mobile polish. Auth/RLS, settlement and saved data logic are unchanged.
     st.markdown("""<style>
     /* Hesabım: dark-theme form controls and mobile readability */
     div[data-testid="stForm"] {background:#0d2035;border:1px solid #203c58;border-radius:16px;padding:14px;}
@@ -516,7 +516,7 @@ def render_account(matches=None):
     div[data-testid="stButton"] button p,
     div[data-testid="stButton"] button span {color:#ffffff !important;opacity:1 !important;}
     </style>""", unsafe_allow_html=True)
-    st.subheader("👤 Hesabım • V3.47.8")
+    st.subheader("👤 Hesabım • V3.48.0")
     st.caption("Kullanıcıya özel kupon geçmişi, otomatik sonuç kontrolü ve performans özeti. V3.14 karar motoruna ve kilitli maç önü oranlarına dokunmaz.")
     user = current_user()
     if not user:
@@ -529,7 +529,7 @@ def render_account(matches=None):
             email=st.text_input("E-posta", key="login_email")
             password=st.text_input("Şifre", type="password", key="login_password")
             go=st.button("Giriş yap", use_container_width=True, type="primary", key="login_button")
-            # V3.47.8: only the login action button is pinned to navy.
+            # V3.48.0: only the login action button is pinned to navy.
             # Text inputs intentionally keep Streamlit's original light appearance.
             st.markdown("""<style>
             .st-key-login_button button,
