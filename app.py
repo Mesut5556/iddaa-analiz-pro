@@ -708,13 +708,18 @@ now = datetime.now(TR_TZ)
 if error is None:
     completed = matches[matches["finished"] & (matches["datetime"] < now)].copy()
     current_season = matches[matches["season"] == "2026-27"].copy()
+    current_completed = current_season[current_season["finished"] & (current_season["datetime"] < now)].copy()
+    # V3.54: Fixture Download does not provide a trustworthy live-minute/status feed.
+    # A kicked-off fixture with no final score is therefore kept visible as
+    # "Başlamış / sonuç bekleniyor" instead of disappearing from the UI.
+    started_waiting = current_season[(~current_season["finished"]) & (current_season["datetime"] < now)].copy()
     future = current_season[(~current_season["finished"]) & (current_season["datetime"] >= now)].copy()
     next7 = future[future["date"] <= now.date() + timedelta(days=7)]
     next15 = future[future["date"] <= now.date() + timedelta(days=15)]
 else:
-    completed = future = next7 = next15 = current_season = pd.DataFrame()
+    completed = future = next7 = next15 = current_season = current_completed = started_waiting = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.53.1 • Değer Filtresi</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.54.0 • Fikstür Durum Takibi + Değer Filtresi</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1095,17 +1100,40 @@ if menu == "🏠 Ana Sayfa":
                 match_card(row)
 
 elif menu == "📅 Fikstür":
-    st.subheader("Süper Lig Fikstürü")
-    choice = st.selectbox("Gösterilecek maçlar",["Önümüzdeki 7 Gün","Önümüzdeki 15 Gün","Tüm Gelecek Maçlar","Geçmiş Maçlar","Tüm Sezon"])
-    selected = {"Önümüzdeki 7 Gün":next7,"Önümüzdeki 15 Gün":next15,"Tüm Gelecek Maçlar":future,"Geçmiş Maçlar":completed,"Tüm Sezon":current_season}[choice]
+    st.subheader("Süper Lig Fikstürü • V3.54")
+    st.caption("Başlama saati geçen ama kesin skor gelmeyen maçlar artık kaybolmaz; sonuç gelene kadar ayrı bölümde görünür.")
+    choice = st.selectbox(
+        "Gösterilecek maçlar",
+        ["Önümüzdeki 7 Gün","Önümüzdeki 15 Gün","Tüm Gelecek Maçlar","Başlamış / Sonuç Bekleyen","Biten Maçlar","Tüm Sezon"],
+    )
+    selected = {
+        "Önümüzdeki 7 Gün": next7,
+        "Önümüzdeki 15 Gün": next15,
+        "Tüm Gelecek Maçlar": future,
+        "Başlamış / Sonuç Bekleyen": started_waiting,
+        "Biten Maçlar": current_completed,
+        "Tüm Sezon": current_season,
+    }[choice]
     if selected.empty:
-        st.info("Bu bölümde maç bulunamadı.")
+        if choice == "Başlamış / Sonuç Bekleyen":
+            st.info("Şu anda başlama saati geçmiş ve kesin sonucu beklenen maç yok.")
+        elif choice == "Biten Maçlar":
+            st.info("Bu sezon için kesin skoru alınmış maç bulunamadı.")
+        else:
+            st.info("Bu bölümde maç bulunamadı.")
     else:
-        d = selected.copy()
+        d = selected.copy().sort_values("datetime", ascending=(choice != "Biten Maçlar"))
         d["Tarih"] = d["datetime"].dt.strftime("%d.%m.%Y")
-        d = d[["round","Tarih","time","home","away","score"]]
-        d.columns = ["Hafta","Tarih","Saat","Ev Sahibi","Deplasman","Skor"]
+        if choice == "Başlamış / Sonuç Bekleyen":
+            d["Durum"] = "⏳ Sonuç bekleniyor"
+        elif choice == "Biten Maçlar":
+            d["Durum"] = "✅ Bitti"
+        else:
+            d["Durum"] = d["finished"].map({True:"✅ Bitti", False:"📅 Oynanacak"})
+        d = d[["round","Tarih","time","home","away","score","Durum"]]
+        d.columns = ["Hafta","Tarih","Saat","Ev Sahibi","Deplasman","Skor","Durum"]
         st.dataframe(d, hide_index=True, use_container_width=True)
+    st.caption("Not: Bu bölüm canlı dakika/skor servisi değildir. Kesin skor Fixture Download kaynağına düştüğünde maç otomatik olarak ‘Biten Maçlar’a geçer.")
 
 elif menu == "📊 Maç Analizi":
     st.subheader("📊 Maç Analiz Merkezi • V3.50.1")
@@ -2027,4 +2055,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.53.1 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.54.0 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
