@@ -39,6 +39,16 @@ h1,h2,h3 {color:#fff!important}
   background:#21364b!important; color:#aebdca!important; opacity:.72!important;
 }
 @media(max-width:700px){.hero-title{font-size:24px}.block-container{padding-left:12px;padding-right:12px}}
+/* V3.54.2 compact fixture/result panels */
+.fixture-panel{background:#0d2137;border:1px solid #23405b;border-radius:16px;overflow:hidden;margin:10px 0 14px}
+.fixture-row{display:grid;grid-template-columns:64px 74px minmax(120px,1fr) 54px minmax(120px,1fr) 86px 120px;gap:8px;align-items:center;padding:11px 14px;border-bottom:1px solid #1c3852;color:#eef5fb;font-size:14px}
+.fixture-row:last-child{border-bottom:0}
+.fixture-head{background:#132c46;color:#9fb3c8;font-size:12px;font-weight:800;text-transform:uppercase}
+.fx-team{font-weight:800;color:#fff}.fx-score{text-align:center;font-weight:900;color:#57e6a5}.fx-status{font-size:12px;font-weight:800}.fx-muted{color:#9fb3c8}
+.today-compact{background:#0d2137;border:1px solid #23405b;border-radius:16px;overflow:hidden;margin:10px 0 14px}
+.today-row{display:grid;grid-template-columns:64px minmax(120px,1fr) 48px minmax(120px,1fr) 70px 70px 105px;gap:8px;align-items:center;padding:13px 14px;border-bottom:1px solid #1c3852}
+.today-row:last-child{border-bottom:0}.today-time{font-weight:800;color:#c9d5e0}.today-team{font-weight:800;color:#fff}.today-mid{text-align:center;color:#9fb3c8}.today-score{text-align:center;font-weight:900;color:#57e6a5}.today-status{font-size:12px;font-weight:900;white-space:nowrap}
+@media(max-width:760px){.fixture-row{grid-template-columns:52px 1fr 44px 1fr 82px;font-size:12px;padding:10px 8px}.fixture-row .fx-date,.fixture-row .fx-week{display:none}.fixture-head{display:none}.today-row{grid-template-columns:48px 1fr 34px 1fr 54px 54px;font-size:12px;padding:11px 8px}.today-status{grid-column:1/-1;text-align:right;font-size:11px}}
 </style>""", unsafe_allow_html=True)
 
 BASE_URL = "https://fixturedownload.azurewebsites.net/feed/json/super-lig-{}"
@@ -719,7 +729,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = current_completed = started_waiting = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.54.1 • Bugün/Oynanan Maç Kartı + Fikstür Durum Takibi + Değer Filtresi</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.54.2 • Kompakt Fikstür + İY/MS Sonuç Paneli + Değer Filtresi</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1100,8 +1110,8 @@ if menu == "🏠 Ana Sayfa":
                 match_card(row)
 
 elif menu == "📅 Fikstür":
-    st.subheader("Süper Lig Fikstürü • V3.54.1")
-    st.caption("Başlama saati geçen ama kesin skor gelmeyen maçlar artık kaybolmaz; sonuç gelene kadar ayrı bölümde görünür.")
+    st.subheader("Süper Lig Fikstürü • V3.54.2")
+    st.caption("Maçlar başlama saatinden sonra kaybolmaz; kesin skor geldiğinde sonuç alanına geçer.")
     choice = st.selectbox(
         "Gösterilecek maçlar",
         ["Önümüzdeki 7 Gün","Önümüzdeki 15 Gün","Tüm Gelecek Maçlar","Başlamış / Sonuç Bekleyen","Biten Maçlar","Tüm Sezon"],
@@ -1114,6 +1124,7 @@ elif menu == "📅 Fikstür":
         "Biten Maçlar": current_completed,
         "Tüm Sezon": current_season,
     }[choice]
+
     if selected.empty:
         if choice == "Başlamış / Sonuç Bekleyen":
             st.info("Şu anda başlama saati geçmiş ve kesin sonucu beklenen maç yok.")
@@ -1123,41 +1134,55 @@ elif menu == "📅 Fikstür":
             st.info("Bu bölümde maç bulunamadı.")
     else:
         d = selected.copy().sort_values("datetime", ascending=(choice != "Biten Maçlar"))
-        d["Tarih"] = d["datetime"].dt.strftime("%d.%m.%Y")
-        if choice == "Başlamış / Sonuç Bekleyen":
-            d["Durum"] = "⏳ Sonuç bekleniyor"
-        elif choice == "Biten Maçlar":
-            d["Durum"] = "✅ Bitti"
-        else:
-            d["Durum"] = d["finished"].map({True:"✅ Bitti", False:"📅 Oynanacak"})
-        d = d[["round","Tarih","time","home","away","score","Durum"]]
-        d.columns = ["Hafta","Tarih","Saat","Ev Sahibi","Deplasman","Skor","Durum"]
-        st.dataframe(d, hide_index=True, use_container_width=True)
-    # V3.54.1: Keep today's kicked-off fixture visible directly below the fixture table.
-    # This is deliberately NOT a live-minute feed: until Fixture Download supplies
-    # a final score, the UI only says OYNANIYOR / skor bekleniyor.
+        rows_html = []
+        for _, game in d.iterrows():
+            is_done = bool(game.get("finished", False))
+            is_started = (not is_done) and game["datetime"] < now
+            status = "✅ Bitti" if is_done else ("🔴 Oynanıyor" if is_started else "📅 Oynanacak")
+            score = str(game.get("score") or "-") if is_done else "—"
+            rows_html.append(
+                '<div class="fixture-row">'
+                f'<div class="fx-week">{escape(str(game.get("round", "-")))}</div>'
+                f'<div class="fx-date">{game["datetime"].strftime("%d.%m")}</div>'
+                f'<div class="fx-team">{escape(str(game["home"]))}</div>'
+                f'<div class="fx-score">{escape(score)}</div>'
+                f'<div class="fx-team">{escape(str(game["away"]))}</div>'
+                f'<div class="fx-muted">{game["datetime"].strftime("%H:%M")}</div>'
+                f'<div class="fx-status">{status}</div>'
+                '</div>'
+            )
+        header = ('<div class="fixture-row fixture-head"><div>Hafta</div><div>Tarih</div>'
+                  '<div>Ev Sahibi</div><div>Skor</div><div>Deplasman</div><div>Saat</div><div>Durum</div></div>')
+        st.markdown('<div class="fixture-panel">' + header + ''.join(rows_html) + '</div>', unsafe_allow_html=True)
+
+    # Compact today panel. Fixture Download does not expose a verified half-time score
+    # in the fields consumed by this app, so İY stays “—” rather than being invented.
     today_local = now.date()
     today_started = started_waiting[started_waiting["date"] == today_local].copy() if not started_waiting.empty else started_waiting.copy()
     today_finished = current_completed[current_completed["date"] == today_local].copy() if not current_completed.empty else current_completed.copy()
     today_status = pd.concat([today_started, today_finished], ignore_index=True) if (not today_started.empty or not today_finished.empty) else pd.DataFrame()
 
     if not today_status.empty:
-        st.markdown("### ⚽ Bugün • Oynanan / Sonuçlanan")
-        st.caption("Başlama saati geçen bugünkü maç burada kaybolmadan kalır; kesin skor geldiğinde aynı alan sonucu gösterir.")
-        today_status = today_status.sort_values("datetime")
-        for _, game in today_status.iterrows():
+        st.markdown("### ⚽ Bugünün Maçları")
+        st.caption("İY = ilk yarı, MS = maç sonu. Kaynak doğrulanmış ilk yarı skoru vermediği için İY alanı şimdilik ‘—’ gösterilir.")
+        compact_rows = []
+        for _, game in today_status.sort_values("datetime").iterrows():
             is_done = bool(game.get("finished", False))
-            with st.container(border=True):
-                if is_done:
-                    st.markdown("**✅ BİTTİ**")
-                    score_text = str(game.get("score") or "-")
-                    st.markdown(f"### {escape(str(game['home']))}  **{escape(score_text)}**  {escape(str(game['away']))}")
-                    st.caption(f"{game['datetime'].strftime('%d.%m.%Y %H:%M')} • Kesinleşmiş fikstür skoru")
-                else:
-                    st.markdown("**🔴 OYNANIYOR**")
-                    st.markdown(f"### {escape(str(game['home']))}  —  {escape(str(game['away']))}")
-                    st.caption(f"Başlangıç: {game['datetime'].strftime('%H:%M')} • Skor bekleniyor")
-        st.caption("Canlı dakika/skor servisi değildir; ‘OYNANIYOR’ ifadesi yalnızca maçın planlanan başlama saatinin geçtiğini gösterir.")
+            ms = str(game.get("score") or "—") if is_done else "—"
+            status = "✅ BİTTİ" if is_done else "🔴 OYNANIYOR"
+            compact_rows.append(
+                '<div class="today-row">'
+                f'<div class="today-time">{game["datetime"].strftime("%H:%M")}</div>'
+                f'<div class="today-team">{escape(str(game["home"]))}</div>'
+                '<div class="today-mid">—</div>'
+                f'<div class="today-team">{escape(str(game["away"]))}</div>'
+                '<div class="today-score"><span class="fx-muted">İY</span><br>—</div>'
+                f'<div class="today-score"><span class="fx-muted">MS</span><br>{escape(ms)}</div>'
+                f'<div class="today-status">{status}</div>'
+                '</div>'
+            )
+        st.markdown('<div class="today-compact">' + ''.join(compact_rows) + '</div>', unsafe_allow_html=True)
+        st.caption("‘OYNANIYOR’ yalnızca planlanan başlama saatinin geçtiğini belirtir; canlı dakika/skor servisi değildir.")
 
     st.caption("Not: Kesin skor Fixture Download kaynağına düştüğünde maç otomatik olarak ‘Biten Maçlar’a geçer.")
 
@@ -2081,4 +2106,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.54.1 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.54.2 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
