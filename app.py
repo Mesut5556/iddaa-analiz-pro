@@ -719,7 +719,7 @@ if error is None:
 else:
     completed = future = next7 = next15 = current_season = current_completed = started_waiting = pd.DataFrame()
 
-st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.54.0 • Fikstür Durum Takibi + Değer Filtresi</div></div>', unsafe_allow_html=True)
+st.markdown('<div class="hero"><div class="hero-title">⚽ İDDAA ANALİZ PRO</div><div class="hero-sub">Süper Lig • Doğrulanmış sinyaller + Kupon Merkezi + Kullanıcı Hesapları + Kupon Sonuçlandırma + Profesyonel Hesap Paneli + Gerçek Oranlı Kupon + Haftalık Kupon Performansı + Kupon Sonuç Audit • V3.54.1 • Bugün/Oynanan Maç Kartı + Fikstür Durum Takibi + Değer Filtresi</div></div>', unsafe_allow_html=True)
 if error:
     st.error("Veri kaynağına bağlanılamadı: " + error)
 else:
@@ -1100,7 +1100,7 @@ if menu == "🏠 Ana Sayfa":
                 match_card(row)
 
 elif menu == "📅 Fikstür":
-    st.subheader("Süper Lig Fikstürü • V3.54")
+    st.subheader("Süper Lig Fikstürü • V3.54.1")
     st.caption("Başlama saati geçen ama kesin skor gelmeyen maçlar artık kaybolmaz; sonuç gelene kadar ayrı bölümde görünür.")
     choice = st.selectbox(
         "Gösterilecek maçlar",
@@ -1133,7 +1133,33 @@ elif menu == "📅 Fikstür":
         d = d[["round","Tarih","time","home","away","score","Durum"]]
         d.columns = ["Hafta","Tarih","Saat","Ev Sahibi","Deplasman","Skor","Durum"]
         st.dataframe(d, hide_index=True, use_container_width=True)
-    st.caption("Not: Bu bölüm canlı dakika/skor servisi değildir. Kesin skor Fixture Download kaynağına düştüğünde maç otomatik olarak ‘Biten Maçlar’a geçer.")
+    # V3.54.1: Keep today's kicked-off fixture visible directly below the fixture table.
+    # This is deliberately NOT a live-minute feed: until Fixture Download supplies
+    # a final score, the UI only says OYNANIYOR / skor bekleniyor.
+    today_local = now.date()
+    today_started = started_waiting[started_waiting["date"] == today_local].copy() if not started_waiting.empty else started_waiting.copy()
+    today_finished = current_completed[current_completed["date"] == today_local].copy() if not current_completed.empty else current_completed.copy()
+    today_status = pd.concat([today_started, today_finished], ignore_index=True) if (not today_started.empty or not today_finished.empty) else pd.DataFrame()
+
+    if not today_status.empty:
+        st.markdown("### ⚽ Bugün • Oynanan / Sonuçlanan")
+        st.caption("Başlama saati geçen bugünkü maç burada kaybolmadan kalır; kesin skor geldiğinde aynı alan sonucu gösterir.")
+        today_status = today_status.sort_values("datetime")
+        for _, game in today_status.iterrows():
+            is_done = bool(game.get("finished", False))
+            with st.container(border=True):
+                if is_done:
+                    st.markdown("**✅ BİTTİ**")
+                    score_text = str(game.get("score") or "-")
+                    st.markdown(f"### {escape(str(game['home']))}  **{escape(score_text)}**  {escape(str(game['away']))}")
+                    st.caption(f"{game['datetime'].strftime('%d.%m.%Y %H:%M')} • Kesinleşmiş fikstür skoru")
+                else:
+                    st.markdown("**🔴 OYNANIYOR**")
+                    st.markdown(f"### {escape(str(game['home']))}  —  {escape(str(game['away']))}")
+                    st.caption(f"Başlangıç: {game['datetime'].strftime('%H:%M')} • Skor bekleniyor")
+        st.caption("Canlı dakika/skor servisi değildir; ‘OYNANIYOR’ ifadesi yalnızca maçın planlanan başlama saatinin geçtiğini gösterir.")
+
+    st.caption("Not: Kesin skor Fixture Download kaynağına düştüğünde maç otomatik olarak ‘Biten Maçlar’a geçer.")
 
 elif menu == "📊 Maç Analizi":
     st.subheader("📊 Maç Analiz Merkezi • V3.50.1")
@@ -2055,4 +2081,4 @@ else:
         st.rerun()
 
 st.divider()
-st.caption("İDDAA ANALİZ PRO V3.54.0 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
+st.caption("İDDAA ANALİZ PRO V3.54.1 • Maç Analiz Merkezi • Çok sezonlu backtest • Model tahminleri garanti değildir.")
